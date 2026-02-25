@@ -1386,6 +1386,10 @@ func (s *server) loadPublicPreviewWriteContext(c *gin.Context, kind string) (pub
 	if err := json.Unmarshal([]byte(specJSON), &appSpec); err != nil {
 		return publicPreviewWriteContext{}, fmt.Errorf("parse preview spec_json: %w", err)
 	}
+	appSpec, err = s.mergeAppSpecWithStoredCollections(c.Request.Context(), project.ID, appSpec)
+	if err != nil {
+		return publicPreviewWriteContext{}, fmt.Errorf("merge preview schema with stored collections: %w", err)
+	}
 	if err := specpkg.ValidateAppSpec(appSpec); err != nil {
 		return publicPreviewWriteContext{}, fmt.Errorf("invalid preview spec: %w", err)
 	}
@@ -1622,6 +1626,10 @@ func (s *server) loadProjectDraftSpec(ctx context.Context, userID int64, slug, p
 	if err := json.Unmarshal([]byte(project.DraftSpecJSON), &appSpec); err != nil {
 		return store.Project{}, specpkg.AppSpec{}, "", fmt.Errorf("parse draft spec_json: %w", err)
 	}
+	appSpec, err = s.mergeAppSpecWithStoredCollections(ctx, project.ID, appSpec)
+	if err != nil {
+		return store.Project{}, specpkg.AppSpec{}, "", fmt.Errorf("merge draft schema with stored collections: %w", err)
+	}
 	if err := specpkg.ValidateAppSpec(appSpec); err != nil {
 		return store.Project{}, specpkg.AppSpec{}, "", fmt.Errorf("invalid draft spec: %w", err)
 	}
@@ -1663,6 +1671,11 @@ func (s *server) buildPreviewAppViewFromSpecJSON(ctx context.Context, project st
 	if err := json.Unmarshal([]byte(specJSON), &appSpec); err != nil {
 		return nil, fmt.Errorf("预览草稿失败：Spec JSON 解析失败：%w", err)
 	}
+	mergedSpec, err := s.mergeAppSpecWithStoredCollections(ctx, project.ID, appSpec)
+	if err != nil {
+		return nil, fmt.Errorf("预览草稿失败：合并历史集合 Schema 失败：%w", err)
+	}
+	appSpec = mergedSpec
 	if err := specpkg.ValidateAppSpec(appSpec); err != nil {
 		return nil, fmt.Errorf("预览草稿失败：Spec 校验失败：%w", err)
 	}
@@ -1703,6 +1716,55 @@ func (s *server) buildPreviewAppViewFromSpecJSON(ctx context.Context, project st
 		return nil, fmt.Errorf("预览草稿失败：%w", err)
 	}
 	return &view, nil
+}
+
+func (s *server) mergeAppSpecWithStoredCollections(ctx context.Context, projectID int64, appSpec specpkg.AppSpec) (specpkg.AppSpec, error) {
+	if projectID == 0 {
+		return appSpec, nil
+	}
+
+	rows, err := s.collectionRepo.ListCollectionsByProject(ctx, projectID)
+	if err != nil {
+		return specpkg.AppSpec{}, fmt.Errorf("list stored collections: %w", err)
+	}
+	if len(rows) == 0 {
+		return appSpec, nil
+	}
+
+	out := appSpec
+	collectionIdx := make(map[string]int, len(out.Collections))
+	for i, c := range out.Collections {
+		collectionIdx[c.Name] = i
+	}
+
+	for _, row := range rows {
+		var stored specpkg.CollectionSpec
+		if err := json.Unmarshal([]byte(row.SchemaJSON), &stored); err != nil {
+			return specpkg.AppSpec{}, fmt.Errorf("parse stored collection %q schema_json: %w", row.Name, err)
+		}
+		idx, ok := collectionIdx[stored.Name]
+		if !ok {
+			out.Collections = append(out.Collections, stored)
+			collectionIdx[stored.Name] = len(out.Collections) - 1
+			continue
+		}
+
+		merged := out.Collections[idx]
+		fieldNames := make(map[string]struct{}, len(merged.Fields))
+		for _, f := range merged.Fields {
+			fieldNames[f.Name] = struct{}{}
+		}
+		for _, f := range stored.Fields {
+			if _, exists := fieldNames[f.Name]; exists {
+				continue
+			}
+			merged.Fields = append(merged.Fields, f)
+			fieldNames[f.Name] = struct{}{}
+		}
+		out.Collections[idx] = merged
+	}
+
+	return out, nil
 }
 
 func previewUIStateFromRequest(c *gin.Context) previewUIState {

@@ -108,6 +108,7 @@ type FormFieldView struct {
 
 type ListBlockView struct {
 	Collection string
+	EditPageID string
 	Columns    []ListColumnView
 	Rows       []ListRowView
 }
@@ -259,6 +260,7 @@ func RenderApp(input RenderInput) (AppView, error) {
 			}
 			blockView.List = &ListBlockView{
 				Collection: b.Collection,
+				EditPageID: findPreferredFormPageID(input.Spec, currentPage.ID, b.Collection),
 				Columns:    columns,
 				Rows:       rows,
 			}
@@ -350,6 +352,42 @@ func RenderApp(input RenderInput) (AppView, error) {
 			Blocks: blocks,
 		},
 	}, nil
+}
+
+func findPreferredFormPageID(appSpec specpkg.AppSpec, currentPageID, collectionName string) string {
+	current := strings.TrimSpace(currentPageID)
+	collection := strings.TrimSpace(collectionName)
+	if collection == "" {
+		return current
+	}
+
+	firstMatch := ""
+	for _, page := range appSpec.Pages {
+		pageID := strings.TrimSpace(page.ID)
+		if pageID == "" {
+			continue
+		}
+		for _, block := range page.Blocks {
+			if block.Type != "form" {
+				continue
+			}
+			if strings.TrimSpace(block.Collection) != collection {
+				continue
+			}
+			if pageID == current {
+				return pageID
+			}
+			if firstMatch == "" {
+				firstMatch = pageID
+			}
+			break
+		}
+	}
+
+	if firstMatch != "" {
+		return firstMatch
+	}
+	return current
 }
 
 func ComputeStatValue(block specpkg.BlockSpec, schema specpkg.CollectionSpec, records []Record) (string, error) {

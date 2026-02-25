@@ -1,9 +1,9 @@
-FROM golang:1.24-bookworm AS builder
+FROM golang:1.25-bookworm AS builder
 
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends nodejs npm ca-certificates && rm -rf /var/lib/apt/lists/*
-RUN corepack enable
+RUN npm install -g pnpm@10.24.0
 
 COPY package.json pnpm-lock.yaml tailwind.config.js ./
 RUN pnpm install --frozen-lockfile

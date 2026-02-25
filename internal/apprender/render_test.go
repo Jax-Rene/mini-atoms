@@ -135,3 +135,58 @@ func TestRenderApp_TimerBlockInfersSessionFields(t *testing.T) {
 		t.Fatalf("timer inferred fields = %#v", timer)
 	}
 }
+
+func TestRenderApp_ListEditUsesFormPageWhenFormOnAnotherPage(t *testing.T) {
+	t.Parallel()
+
+	appSpec := specpkg.AppSpec{
+		AppName: "Todo",
+		Collections: []specpkg.CollectionSpec{
+			{
+				Name: "todos",
+				Fields: []specpkg.FieldSpec{
+					{Name: "title", Type: specpkg.FieldTypeText},
+					{Name: "done", Type: specpkg.FieldTypeBool},
+				},
+			},
+		},
+		Pages: []specpkg.PageSpec{
+			{
+				ID: "dashboard",
+				Blocks: []specpkg.BlockSpec{
+					{Type: "list", Collection: "todos"},
+				},
+			},
+			{
+				ID: "create_task",
+				Blocks: []specpkg.BlockSpec{
+					{Type: "form", Collection: "todos"},
+				},
+			},
+		},
+	}
+
+	view, err := RenderApp(RenderInput{
+		Spec:           appSpec,
+		Mode:           ModeEditor,
+		SelectedPageID: "dashboard",
+		Collections: map[string]CollectionData{
+			"todos": {
+				Schema: appSpec.Collections[0],
+				Records: []Record{
+					{ID: 1, Data: map[string]any{"title": "task 1", "done": false}},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("render app: %v", err)
+	}
+
+	if len(view.CurrentPage.Blocks) != 1 || view.CurrentPage.Blocks[0].List == nil {
+		t.Fatalf("list block missing: %#v", view.CurrentPage.Blocks)
+	}
+	if got := view.CurrentPage.Blocks[0].List.EditPageID; got != "create_task" {
+		t.Fatalf("list edit page = %q, want %q", got, "create_task")
+	}
+}

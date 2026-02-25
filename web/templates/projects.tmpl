@@ -98,4 +98,29 @@
     </div>
   </div>
 </section>
+<script>
+  (() => {
+    const goalPrompt = document.getElementById("goal_prompt");
+    if (!(goalPrompt instanceof HTMLTextAreaElement)) return;
+    if (goalPrompt.dataset.enterSubmitBound === "true") return;
+
+    goalPrompt.dataset.enterSubmitBound = "true";
+    goalPrompt.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      if (event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (event.isComposing || event.keyCode === 229) return;
+
+      event.preventDefault();
+      const form = goalPrompt.form;
+      if (!(form instanceof HTMLFormElement)) return;
+
+      if (typeof form.requestSubmit === "function") {
+        form.requestSubmit();
+        return;
+      }
+
+      form.submit();
+    });
+  })();
+</script>
 {{ end }}

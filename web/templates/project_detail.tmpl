@@ -3,10 +3,6 @@
   class="surface-marble project-hardline-hero p-4 sm:p-5"
 >
   <div class="project-meta-list project-detail-meta-strip">
-    <span>项目详情</span>
-    {{ if .CurrentProject.Slug }}
-    <span><span class="project-meta-code">/projects/{{ .CurrentProject.Slug }}</span></span>
-    {{ end }}
     {{ if .CurrentUserEmail }}<span>创建人 {{ .CurrentUserEmail }}</span>{{ end }}
     <span>创建于 {{ .CurrentProject.CreatedAtText }}</span>
     <span>更新于 {{ .CurrentProject.UpdatedAtText }}</span>
@@ -47,23 +43,6 @@
 {{ end }}
 
 {{ define "published_project_content" }}
-<section class="surface-marble project-hardline-hero project-detail-hero-stage relative overflow-hidden p-6 sm:p-8">
-  <div class="relative flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-    <div class="max-w-4xl">
-      <p class="kicker">已发布应用</p>
-      <h1 class="project-hero-title mt-3">{{ .CurrentProject.Name }}</h1>
-      <div class="project-meta-list mt-4">
-        {{ if .CurrentProject.PublishedSlug }}<span class="project-meta-code">/p/{{ .CurrentProject.PublishedSlug }}</span>{{ end }}
-        <span>公开页面</span>
-        {{ if .CurrentProject.PublishedAtText }}<span>发布于 {{ .CurrentProject.PublishedAtText }}</span>{{ end }}
-      </div>
-      <div class="project-hero-lead-shell mt-5">
-        <p class="project-hero-lead">{{ .CurrentProject.GoalPrompt }}</p>
-      </div>
-    </div>
-  </div>
-</section>
-
 <section class="mt-6">
   {{ template "project_detail_preview_embed_panel" . }}
 </section>
@@ -231,6 +210,31 @@
     </div>
   </div>
 </div>
+<script>
+  (() => {
+    const projectPrompt = document.getElementById("project_prompt");
+    if (!(projectPrompt instanceof HTMLTextAreaElement)) return;
+    if (projectPrompt.dataset.enterSubmitBound === "true") return;
+
+    projectPrompt.dataset.enterSubmitBound = "true";
+    projectPrompt.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      if (event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (event.isComposing || event.keyCode === 229) return;
+
+      event.preventDefault();
+      const form = projectPrompt.form;
+      if (!(form instanceof HTMLFormElement)) return;
+
+      if (typeof form.requestSubmit === "function") {
+        form.requestSubmit();
+        return;
+      }
+
+      form.submit();
+    });
+  })();
+</script>
 {{ end }}
 
 {{ define "project_chat_readonly_panel" }}
@@ -712,6 +716,10 @@
         </tr>
       </thead>
       <tbody>
+        {{ $listEditPageID := $root.PreviewPageID }}
+        {{ if $block.List.EditPageID }}
+          {{ $listEditPageID = $block.List.EditPageID }}
+        {{ end }}
         {{ range $block.List.Rows }}
         <tr>
           {{ range .Cells }}
@@ -721,10 +729,10 @@
           <td>
             <div class="flex items-center gap-2">
               <a
-                href="{{ $root.PreviewPageBasePath }}?page={{ $root.PreviewPageID }}&edit_collection={{ $block.List.Collection }}&edit_record={{ .ID }}"
+                href="{{ $root.PreviewPageBasePath }}?page={{ $listEditPageID }}&edit_collection={{ $block.List.Collection }}&edit_record={{ .ID }}"
                 class="text-xs text-slate-600 hover:text-slate-900"
                 {{ if $root.PreviewPanelPath }}
-                hx-get="{{ $root.PreviewPanelPath }}?page={{ $root.PreviewPageID }}&edit_collection={{ $block.List.Collection }}&edit_record={{ .ID }}"
+                hx-get="{{ $root.PreviewPanelPath }}?page={{ $listEditPageID }}&edit_collection={{ $block.List.Collection }}&edit_record={{ .ID }}"
                 hx-target="#project-preview-panel"
                 hx-swap="outerHTML"
                 hx-push-url="false"

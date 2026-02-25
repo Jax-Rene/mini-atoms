@@ -2,6 +2,7 @@ package httpapp
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,7 @@ import (
 
 	"mini-atoms/internal/auth"
 	"mini-atoms/internal/config"
+	specpkg "mini-atoms/internal/spec"
 	"mini-atoms/internal/store"
 )
 
@@ -670,6 +672,118 @@ func TestProjectPreviewFramePageRendersIsolatedDocument(t *testing.T) {
 	}
 	if strings.Contains(body, `aria-label="打开我的项目侧边栏"`) {
 		t.Fatalf("preview frame should hide outer page navigation chrome, body=%q", body)
+	}
+}
+
+func TestProjectPreviewFrameRecoversWhenDraftOmitsExistingSchemaField(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "router-recover-preview.db")
+	db, err := store.OpenSQLite(ctx, dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("gorm db(): %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+
+	h, err := NewRouter(Dependencies{
+		Config: config.Config{
+			AppEnv:        "test",
+			HTTPAddr:      ":0",
+			DatabasePath:  dbPath,
+			SessionSecret: "test-session-secret",
+		},
+		DB: db,
+	})
+	if err != nil {
+		t.Fatalf("new router: %v", err)
+	}
+
+	email := "m8-recover-preview@example.com"
+	sessionCookie := registerAndLoginForTest(t, h, email)
+
+	createForm := url.Values{}
+	createForm.Set("goal_prompt", "帮我做一个任务应用")
+	createReq := httptest.NewRequest(http.MethodPost, "/projects", strings.NewReader(createForm.Encode()))
+	createReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	createReq.AddCookie(sessionCookie)
+	createRec := httptest.NewRecorder()
+	h.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusSeeOther {
+		t.Fatalf("create project status = %d, want %d", createRec.Code, http.StatusSeeOther)
+	}
+	projectPath := createRec.Header().Get("Location")
+	slug := strings.TrimPrefix(projectPath, "/projects/")
+
+	authRepo := store.NewAuthRepo(db)
+	user, err := authRepo.GetUserByEmail(ctx, email)
+	if err != nil {
+		t.Fatalf("GetUserByEmail() error = %v", err)
+	}
+	projectRepo := store.NewProjectRepo(db)
+	project, err := projectRepo.GetProjectByUserAndSlug(ctx, user.ID, slug)
+	if err != nil {
+		t.Fatalf("GetProjectByUserAndSlug() error = %v", err)
+	}
+
+	valid := specpkg.AppSpec{
+		AppName: "Task App",
+		Collections: []specpkg.CollectionSpec{
+			{
+				Name: "tasks",
+				Fields: []specpkg.FieldSpec{
+					{Name: "title", Type: specpkg.FieldTypeText, Required: true},
+					{Name: "description", Type: specpkg.FieldTypeText},
+					{Name: "done", Type: specpkg.FieldTypeBool, Required: true},
+				},
+			},
+		},
+		Pages: []specpkg.PageSpec{
+			{
+				ID: "home",
+				Blocks: []specpkg.BlockSpec{
+					{Type: "form", Collection: "tasks"},
+					{Type: "list", Collection: "tasks"},
+					{Type: "toggle", Collection: "tasks", Field: "done"},
+				},
+			},
+		},
+	}
+	if err := store.NewCollectionRepo(db).SyncCollectionsFromSpec(ctx, project.ID, valid); err != nil {
+		t.Fatalf("seed collection schema: %v", err)
+	}
+
+	broken := valid
+	broken.Collections[0].Fields = []specpkg.FieldSpec{
+		{Name: "title", Type: specpkg.FieldTypeText, Required: true},
+		{Name: "done", Type: specpkg.FieldTypeBool, Required: true},
+	}
+	brokenJSON, err := json.Marshal(broken)
+	if err != nil {
+		t.Fatalf("json.Marshal() broken spec error = %v", err)
+	}
+	if err := projectRepo.UpdateProjectSpecsByID(ctx, user.ID, project.ID, string(brokenJSON), ""); err != nil {
+		t.Fatalf("UpdateProjectSpecsByID() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, projectPath+"/preview/frame", nil)
+	req.AddCookie(sessionCookie)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("preview frame status = %d, want %d, body=%q", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if strings.Contains(body, "同步集合失败") {
+		t.Fatalf("preview frame should recover from omitted field schema drift, body=%q", body)
+	}
+	if !strings.Contains(body, `id="project-preview-panel"`) {
+		t.Fatalf("preview frame body missing preview panel root, body=%q", body)
 	}
 }
 
