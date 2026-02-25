@@ -12,6 +12,7 @@ const (
 	defaultDatabasePath = "./data/mini-atoms-gorm.db"
 	defaultSessionKey   = "dev-session-secret-change-me"
 	defaultAppBaseURL   = "http://localhost:8080"
+	defaultDebugToken   = "dev-debug-reset-token-change-me"
 )
 
 type Config struct {
@@ -38,7 +39,7 @@ func loadFromLookup(lookup lookupEnvFunc) (Config, error) {
 		SessionSecret:          getOrDefault(lookup, "SESSION_SECRET", defaultSessionKey),
 		DeepSeekAPIKey:         getOrDefault(lookup, "DEEPSEEK_API_KEY", ""),
 		AppBaseURL:             getOrDefault(lookup, "APP_BASE_URL", defaultAppBaseURL),
-		DebugResetAllDataToken: getOrDefault(lookup, "DEBUG_RESET_ALL_DATA_TOKEN", ""),
+		DebugResetAllDataToken: getOrDefault(lookup, "DEBUG_RESET_ALL_DATA_TOKEN", defaultDebugToken),
 	}
 
 	cfg.AppEnv = strings.TrimSpace(cfg.AppEnv)
