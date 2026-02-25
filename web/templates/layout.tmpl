@@ -15,7 +15,9 @@
         working: false,
         autoStarted: false,
         stepIndex: 0,
+        progressPercent: 0,
         stepTimer: null,
+        progressTargets: [14, 36, 62, 84],
         steps: [
           "正在理解你的需求...",
           "正在生成应用结构...",
@@ -25,15 +27,31 @@
         start() {
           this.working = true;
           this.stepIndex = 0;
+          this.progressPercent = this.progressTargets[0];
           this.stopTimer();
           this.stepTimer = setInterval(() => {
-            this.stepIndex = (this.stepIndex + 1) % this.steps.length;
+            const lastStepIndex = this.steps.length - 1;
+            if (this.stepIndex < lastStepIndex) {
+              this.stepIndex += 1;
+              this.progressPercent = this.progressTargets[this.stepIndex] || this.progressTargets[lastStepIndex];
+              return;
+            }
+            this.progressPercent = Math.min(94, this.progressPercent + 2);
           }, 1200);
         },
         stop() {
           this.working = false;
           this.stepIndex = 0;
+          this.progressPercent = 0;
           this.stopTimer();
+        },
+        currentStepText() {
+          const stepText = this.steps[this.stepIndex] || this.steps[0] || "正在处理中...";
+          return "步骤 " + (this.stepIndex + 1) + "/" + this.steps.length + " · " + stepText;
+        },
+        progressBarStyle() {
+          const width = Math.max(0, Math.min(100, this.progressPercent || 0));
+          return "width: " + width + "%";
         },
         stopOnWorkbenchSwap(event) {
           const detail = event && event.detail ? event.detail : null;

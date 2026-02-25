@@ -138,7 +138,7 @@ func (s *Service) generateAndValidate(ctx context.Context, req ClientRequest) (s
 			if err := json.Unmarshal([]byte(raw), &appSpec); err != nil {
 				lastErr = fmt.Errorf("parse spec json: %w", err)
 				log.Printf("generation attempt parse error: attempt=%d/%d duration_ms=%d err=%v", attemptNo, MaxRepairRetries+1, time.Since(attemptStartedAt).Milliseconds(), lastErr)
-			} else if err := spec.ValidateAppSpec(appSpec); err != nil {
+			} else if appSpec, err = validateAndRepairCommonLLMIssues(appSpec); err != nil {
 				lastErr = fmt.Errorf("validate spec: %w", err)
 				log.Printf("generation attempt validation error: attempt=%d/%d duration_ms=%d err=%v", attemptNo, MaxRepairRetries+1, time.Since(attemptStartedAt).Milliseconds(), lastErr)
 			} else {
@@ -166,6 +166,43 @@ func (s *Service) generateAndValidate(ctx context.Context, req ClientRequest) (s
 	}
 
 	return "", spec.AppSpec{}, fmt.Errorf("generate draft failed after repair retry: %w", lastErr)
+}
+
+func validateAndRepairCommonLLMIssues(appSpec spec.AppSpec) (spec.AppSpec, error) {
+	if err := spec.ValidateAppSpec(appSpec); err == nil {
+		return appSpec, nil
+	}
+
+	repaired := repairCommonLLMSpecIssues(appSpec)
+	if err := spec.ValidateAppSpec(repaired); err != nil {
+		return spec.AppSpec{}, err
+	}
+	return repaired, nil
+}
+
+func repairCommonLLMSpecIssues(appSpec spec.AppSpec) spec.AppSpec {
+	if len(appSpec.Collections) != 1 {
+		return appSpec
+	}
+	collectionName := strings.TrimSpace(appSpec.Collections[0].Name)
+	if collectionName == "" {
+		return appSpec
+	}
+
+	out := appSpec
+	for pageIdx := range out.Pages {
+		for blockIdx := range out.Pages[pageIdx].Blocks {
+			block := &out.Pages[pageIdx].Blocks[blockIdx]
+			if strings.TrimSpace(block.Collection) != "" {
+				continue
+			}
+			switch block.Type {
+			case "list", "form", "toggle", "stats":
+				block.Collection = collectionName
+			}
+		}
+	}
+	return out
 }
 
 func mergeNonDestructiveSchema(currentDraftJSON string, generated spec.AppSpec) (spec.AppSpec, error) {

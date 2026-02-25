@@ -20,10 +20,17 @@
             required
             rows="2"
             placeholder="例如：帮我做一个简历网站，支持项目经历、作品集、导出 PDF 和深色主题预览。"
+            data-placeholder-typing="true"
             class="linear-compose-input linear-compose-input-framed"
           >{{ .ProjectFormGoal }}</textarea>
-          <button type="submit" class="linear-compose-submit">Build</button>
+          <button
+            type="submit"
+            class="linear-compose-submit"
+            data-idle-label="Build"
+            data-loading-label="生成中..."
+          >Build</button>
         </div>
+        <p class="linear-compose-hint px-1 pb-2 pt-1">Enter 发送，Shift+Enter 换行；点击下方灵感卡片可一键填充。</p>
       </form>
 
       <div>
@@ -49,42 +56,72 @@
           </div>
           {{ else }}
           <div class="linear-showcase-grid">
-            <button type="button" class="linear-showcase-item linear-showcase-item-static">
+            <button
+              type="button"
+              class="linear-showcase-item linear-showcase-item-static"
+              data-fill-prompt="帮我做一个简历网站，支持项目经历、作品集、导出 PDF、主题切换与预览。"
+              title="点击填充到输入框"
+            >
               <div class="linear-showcase-item-top">
                 <span class="linear-showcase-dot" aria-hidden="true"></span>
                 <p class="linear-showcase-title">简历网站生成器</p>
               </div>
               <p class="linear-showcase-desc">项目经历、作品集、导出 PDF、主题切换与预览。</p>
             </button>
-            <button type="button" class="linear-showcase-item linear-showcase-item-static">
+            <button
+              type="button"
+              class="linear-showcase-item linear-showcase-item-static"
+              data-fill-prompt="帮我做一个个人作品集 + 博客，支持文章列表、标签、详情页与作品展示卡片。"
+              title="点击填充到输入框"
+            >
               <div class="linear-showcase-item-top">
                 <span class="linear-showcase-dot" aria-hidden="true"></span>
                 <p class="linear-showcase-title">个人作品集 + 博客</p>
               </div>
               <p class="linear-showcase-desc">文章列表、标签、详情页与作品展示卡片。</p>
             </button>
-            <button type="button" class="linear-showcase-item linear-showcase-item-static">
+            <button
+              type="button"
+              class="linear-showcase-item linear-showcase-item-static"
+              data-fill-prompt="帮我做一个轻量 CRM 看板，支持线索录入、状态跟进、筛选视图和统计卡片。"
+              title="点击填充到输入框"
+            >
               <div class="linear-showcase-item-top">
                 <span class="linear-showcase-dot" aria-hidden="true"></span>
                 <p class="linear-showcase-title">轻量 CRM 看板</p>
               </div>
               <p class="linear-showcase-desc">线索录入、状态跟进、统计卡片与筛选视图。</p>
             </button>
-            <button type="button" class="linear-showcase-item linear-showcase-item-static">
+            <button
+              type="button"
+              class="linear-showcase-item linear-showcase-item-static"
+              data-fill-prompt="帮我做一个待办 + 统计面板，支持新增任务、状态切换、优先级、分类管理和完成率统计。"
+              title="点击填充到输入框"
+            >
               <div class="linear-showcase-item-top">
                 <span class="linear-showcase-dot" aria-hidden="true"></span>
                 <p class="linear-showcase-title">待办 + 统计面板</p>
               </div>
               <p class="linear-showcase-desc">表单、列表、状态切换、完成率与分类管理。</p>
             </button>
-            <button type="button" class="linear-showcase-item linear-showcase-item-static">
+            <button
+              type="button"
+              class="linear-showcase-item linear-showcase-item-static"
+              data-fill-prompt="做一个课程报名表单系统，包含报名信息收集、字段校验、名单列表、名额控制和导出视图。"
+              title="点击填充到输入框"
+            >
               <div class="linear-showcase-item-top">
                 <span class="linear-showcase-dot" aria-hidden="true"></span>
                 <p class="linear-showcase-title">课程报名表单系统</p>
               </div>
               <p class="linear-showcase-desc">报名信息收集、校验、名单列表与导出视图。</p>
             </button>
-            <button type="button" class="linear-showcase-item linear-showcase-item-static">
+            <button
+              type="button"
+              class="linear-showcase-item linear-showcase-item-static"
+              data-fill-prompt="帮我做一个活动落地页 + 线索收集系统，包含活动介绍、报名表单、转化统计和状态管理。"
+              title="点击填充到输入框"
+            >
               <div class="linear-showcase-item-top">
                 <span class="linear-showcase-dot" aria-hidden="true"></span>
                 <p class="linear-showcase-title">活动落地页 + 收集线索</p>
@@ -102,25 +139,206 @@
   (() => {
     const goalPrompt = document.getElementById("goal_prompt");
     if (!(goalPrompt instanceof HTMLTextAreaElement)) return;
-    if (goalPrompt.dataset.enterSubmitBound === "true") return;
+    const composeForm = goalPrompt.form;
+    const composeSubmit = composeForm instanceof HTMLFormElement
+      ? composeForm.querySelector(".linear-compose-submit")
+      : null;
 
-    goalPrompt.dataset.enterSubmitBound = "true";
-    goalPrompt.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter") return;
-      if (event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return;
-      if (event.isComposing || event.keyCode === 229) return;
+    if (composeForm instanceof HTMLFormElement && composeForm.dataset.loadingBound !== "true") {
+      composeForm.dataset.loadingBound = "true";
+      composeForm.addEventListener("submit", () => {
+        if (!(composeSubmit instanceof HTMLButtonElement)) return;
+        const loadingLabel = composeSubmit.dataset.loadingLabel || "生成中...";
+        composeSubmit.disabled = true;
+        composeSubmit.dataset.loading = "true";
+        composeSubmit.setAttribute("aria-busy", "true");
+        composeSubmit.textContent = loadingLabel;
+      });
+    }
 
-      event.preventDefault();
-      const form = goalPrompt.form;
-      if (!(form instanceof HTMLFormElement)) return;
+    if (goalPrompt.dataset.autoHeightBound !== "true") {
+      goalPrompt.dataset.autoHeightBound = "true";
 
-      if (typeof form.requestSubmit === "function") {
-        form.requestSubmit();
+      const syncGoalPromptHeight = () => {
+        const styles = window.getComputedStyle(goalPrompt);
+        const minHeight = Number.parseFloat(styles.minHeight) || 0;
+        const maxHeight = styles.maxHeight && styles.maxHeight !== "none"
+          ? Number.parseFloat(styles.maxHeight)
+          : Number.POSITIVE_INFINITY;
+        const borderHeight = goalPrompt.offsetHeight - goalPrompt.clientHeight;
+
+        goalPrompt.style.height = "auto";
+
+        const fullHeight = Math.max(goalPrompt.scrollHeight + borderHeight, minHeight);
+        const nextHeight = Math.min(fullHeight, maxHeight);
+
+        goalPrompt.style.height = `${nextHeight}px`;
+        goalPrompt.style.overflowY = fullHeight > maxHeight ? "auto" : "hidden";
+      };
+
+      goalPrompt.addEventListener("input", syncGoalPromptHeight);
+      window.addEventListener("resize", syncGoalPromptHeight);
+      window.requestAnimationFrame(syncGoalPromptHeight);
+    }
+
+    if (goalPrompt.dataset.showcaseFillBound !== "true") {
+      goalPrompt.dataset.showcaseFillBound = "true";
+      const fillButtons = Array.from(document.querySelectorAll("[data-fill-prompt]"));
+      fillButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          const prompt = button instanceof HTMLElement ? (button.dataset.fillPrompt || "").trim() : "";
+          if (!prompt) return;
+
+          goalPrompt.value = prompt;
+          goalPrompt.dispatchEvent(new Event("input", { bubbles: true }));
+          goalPrompt.focus();
+          goalPrompt.setSelectionRange(goalPrompt.value.length, goalPrompt.value.length);
+
+          fillButtons.forEach((item) => item.classList.remove("is-filled"));
+          button.classList.add("is-filled");
+        });
+      });
+    }
+
+    if (goalPrompt.dataset.enterSubmitBound !== "true") {
+      goalPrompt.dataset.enterSubmitBound = "true";
+      goalPrompt.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter") return;
+        if (event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return;
+        if (event.isComposing || event.keyCode === 229) return;
+
+        event.preventDefault();
+        const form = goalPrompt.form;
+        if (!(form instanceof HTMLFormElement)) return;
+
+        if (typeof form.requestSubmit === "function") {
+          form.requestSubmit();
+          return;
+        }
+
+        form.submit();
+      });
+    }
+
+    if (goalPrompt.dataset.placeholderTypingBound === "true") return;
+    goalPrompt.dataset.placeholderTypingBound = "true";
+
+    const samplePlaceholders = [
+      "例如：帮我做一个简历网站，支持项目经历、作品集、导出 PDF 和深色主题预览。",
+      "例如：做一个课程报名系统，包含报名表单、名额上限、候补队列和导出名单。",
+      "例如：帮我做一个轻量 CRM 看板，支持线索录入、跟进记录、状态筛选和转化统计。",
+      "例如：做一个活动落地页，包含报名表单、倒计时、FAQ、短信提醒和数据看板。",
+      "例如：帮我做一个团队任务中心，支持看板、优先级、截止时间和周报汇总。",
+    ];
+    if (samplePlaceholders.length === 0) return;
+
+    const fallbackPlaceholder = goalPrompt.getAttribute("placeholder") || "";
+    const prefersReducedMotion = typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (prefersReducedMotion) {
+      if (!goalPrompt.value) {
+        goalPrompt.setAttribute("placeholder", samplePlaceholders[0]);
+      }
+      return;
+    }
+
+    let timerId = 0;
+    let sampleIndex = 0;
+    let charIndex = 0;
+    let deleting = false;
+    let caretVisible = true;
+    let idleTicks = 0;
+
+    const clearTick = () => {
+      if (!timerId) return;
+      window.clearTimeout(timerId);
+      timerId = 0;
+    };
+
+    const renderFrame = () => {
+      const current = samplePlaceholders[sampleIndex] || fallbackPlaceholder;
+      const typed = current.slice(0, charIndex);
+      const caret = caretVisible ? "▍" : "";
+      goalPrompt.setAttribute("placeholder", typed + caret);
+    };
+
+    const pauseToBlink = (times, nextDelay) => {
+      idleTicks = times;
+      caretVisible = true;
+      renderFrame();
+      timerId = window.setTimeout(tick, nextDelay);
+    };
+
+    const tick = () => {
+      timerId = 0;
+      if (goalPrompt.value) {
+        goalPrompt.setAttribute("placeholder", fallbackPlaceholder);
         return;
       }
 
-      form.submit();
+      const current = samplePlaceholders[sampleIndex] || fallbackPlaceholder;
+
+      if (idleTicks > 0) {
+        idleTicks -= 1;
+        caretVisible = !caretVisible;
+        renderFrame();
+        timerId = window.setTimeout(tick, 360);
+        return;
+      }
+
+      if (!deleting && charIndex < current.length) {
+        charIndex += 1;
+        caretVisible = true;
+        renderFrame();
+        timerId = window.setTimeout(tick, charIndex < 8 ? 45 : 28);
+        return;
+      }
+
+      if (!deleting && charIndex >= current.length) {
+        deleting = true;
+        pauseToBlink(3, 900);
+        return;
+      }
+
+      if (deleting && charIndex > 0) {
+        charIndex -= 1;
+        caretVisible = true;
+        renderFrame();
+        timerId = window.setTimeout(tick, 16);
+        return;
+      }
+
+      deleting = false;
+      sampleIndex = (sampleIndex + 1) % samplePlaceholders.length;
+      pauseToBlink(1, 260);
+    };
+
+    const startTyping = () => {
+      if (timerId || goalPrompt.value) return;
+      tick();
+    };
+
+    const stopTyping = () => {
+      clearTick();
+      goalPrompt.setAttribute("placeholder", fallbackPlaceholder);
+    };
+
+    goalPrompt.addEventListener("input", () => {
+      if (goalPrompt.value) {
+        stopTyping();
+        return;
+      }
+      startTyping();
     });
+
+    goalPrompt.addEventListener("blur", () => {
+      if (!goalPrompt.value) {
+        startTyping();
+      }
+    });
+
+    window.addEventListener("beforeunload", clearTick, { once: true });
+    startTyping();
   })();
 </script>
 {{ end }}

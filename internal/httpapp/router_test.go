@@ -117,6 +117,33 @@ func TestRegisterCreatesSessionAndAccessProjects(t *testing.T) {
 	}
 }
 
+func TestProjectsPageRendersTypingPlaceholderSamples(t *testing.T) {
+	t.Parallel()
+
+	h := newTestRouter(t)
+	sessionCookie := registerAndLoginForTest(t, h, "typing-placeholder@example.com")
+
+	req := httptest.NewRequest(http.MethodGet, "/projects", nil)
+	req.AddCookie(sessionCookie)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("projects status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `data-placeholder-typing="true"`) {
+		t.Fatalf("projects body missing typing placeholder marker, body=%q", body)
+	}
+	if !strings.Contains(body, "帮我做一个简历网站，支持项目经历、作品集、导出 PDF 和深色主题预览。") {
+		t.Fatalf("projects body missing typing placeholder sample text, body=%q", body)
+	}
+	if !strings.Contains(body, "做一个课程报名系统，包含报名表单、名额上限、候补队列和导出名单。") {
+		t.Fatalf("projects body missing extra typing placeholder sample text, body=%q", body)
+	}
+}
+
 func TestLoginInvalidCredentials(t *testing.T) {
 	t.Parallel()
 
@@ -169,6 +196,70 @@ func TestLoginInvalidCredentials(t *testing.T) {
 	body, _ := io.ReadAll(rec.Result().Body)
 	if !strings.Contains(string(body), "邮箱或密码错误") {
 		t.Fatalf("login body missing error message, body=%q", string(body))
+	}
+}
+
+func TestLoginPageShowsDemoModeEntry(t *testing.T) {
+	t.Parallel()
+
+	h := newTestRouter(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/login", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("login page status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `action="/login/demo"`) {
+		t.Fatalf("login page missing demo login action, body=%q", body)
+	}
+	if !strings.Contains(body, "体验模式") {
+		t.Fatalf("login page missing demo mode copy, body=%q", body)
+	}
+	if !strings.Contains(body, demoLoginEmail) {
+		t.Fatalf("login page missing demo email, body=%q", body)
+	}
+}
+
+func TestDemoLoginCreatesSessionAndAccessProjects(t *testing.T) {
+	t.Parallel()
+
+	h := newTestRouter(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/login/demo", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("demo login status = %d, want %d", rec.Code, http.StatusSeeOther)
+	}
+	if got := rec.Header().Get("Location"); got != "/projects" {
+		t.Fatalf("demo login Location = %q, want %q", got, "/projects")
+	}
+
+	var sessionCookie *http.Cookie
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == sessionCookieName {
+			sessionCookie = c
+			break
+		}
+	}
+	if sessionCookie == nil || sessionCookie.Value == "" {
+		t.Fatal("expected non-empty auth session cookie for demo login")
+	}
+
+	req2 := httptest.NewRequest(http.MethodGet, "/projects", nil)
+	req2.AddCookie(sessionCookie)
+	rec2 := httptest.NewRecorder()
+	h.ServeHTTP(rec2, req2)
+
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("projects status = %d, want %d", rec2.Code, http.StatusOK)
+	}
+	if !strings.Contains(rec2.Body.String(), demoLoginEmail) {
+		t.Fatalf("projects body missing demo account email, body=%q", rec2.Body.String())
 	}
 }
 
@@ -352,6 +443,48 @@ func TestProjectPreviewCreateRecordHTMXPartial(t *testing.T) {
 	}
 	if !strings.Contains(body, "总数") {
 		t.Fatalf("preview create body missing stats label, body=%q", body)
+	}
+}
+
+func TestProjectPreviewToggleRowIncludesEditLink(t *testing.T) {
+	t.Parallel()
+
+	h := newTestRouter(t)
+	sessionCookie := registerAndLoginForTest(t, h, "m5-preview-toggle-edit@example.com")
+	projectPath := createProjectAndGenerateDraftForTest(t, h, sessionCookie, "帮我做一个待办应用", "包含 form、list、toggle、stats")
+
+	form := url.Values{}
+	form.Set("title", "已完成项也要能编辑")
+	form.Set("done", "1")
+	form.Set("page_id", "home")
+	form.Set("preview_mode", "editor")
+
+	req := httptest.NewRequest(http.MethodPost, projectPath+"/preview/records/todos", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	req.AddCookie(sessionCookie)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("preview create status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	body := rec.Body.String()
+	toggleIdx := strings.Index(body, `class="m5-toggle-row"`)
+	if toggleIdx < 0 {
+		t.Fatalf("preview create body missing toggle row, body=%q", body)
+	}
+	snippetEnd := toggleIdx + 1800
+	if snippetEnd > len(body) {
+		snippetEnd = len(body)
+	}
+	toggleSnippet := body[toggleIdx:snippetEnd]
+	if !strings.Contains(toggleSnippet, ">编辑<") {
+		t.Fatalf("toggle row should include edit link, snippet=%q", toggleSnippet)
+	}
+	if !strings.Contains(toggleSnippet, "edit_collection=todos") || !strings.Contains(toggleSnippet, "edit_record=") {
+		t.Fatalf("toggle row edit link missing edit params, snippet=%q", toggleSnippet)
 	}
 }
 

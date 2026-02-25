@@ -1,6 +1,6 @@
 {{ define "project_detail_content" }}
 <section
-  class="surface-marble project-hardline-hero p-4 sm:p-5"
+  class="surface-marble project-hardline-hero project-detail-flat-surface p-4 sm:p-5"
 >
   <div class="project-meta-list project-detail-meta-strip">
     {{ if .CurrentUserEmail }}<span>创建人 {{ .CurrentUserEmail }}</span>{{ end }}
@@ -14,13 +14,12 @@
 {{ end }}
 
 {{ define "shared_project_content" }}
-<section class="surface-marble project-hardline-hero project-detail-hero-stage relative overflow-hidden p-6 sm:p-8">
+<section class="surface-marble project-hardline-hero project-detail-hero-stage project-detail-flat-surface relative overflow-hidden p-6 sm:p-8">
   <div class="relative flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
     <div class="max-w-4xl">
       <p class="kicker">分享页面</p>
       <h1 class="project-hero-title mt-3">{{ .CurrentProject.Name }}</h1>
       <div class="project-meta-list mt-4">
-        {{ if .CurrentProject.PublishedAtText }}<span>最近发布 {{ .CurrentProject.PublishedAtText }}</span>{{ end }}
       </div>
       <div class="project-hero-lead-shell mt-5">
         <p class="project-hero-lead">{{ .CurrentProject.GoalPrompt }}</p>
@@ -63,7 +62,7 @@
 {{ end }}
 
 {{ define "project_detail_chat_panel" }}
-<div class="ghost-panel project-chat-panel-shell project-chat-panel-heavy project-hardline-panel p-5 sm:p-6" x-show="!chatHidden" x-transition.opacity.duration.150ms>
+<div class="ghost-panel project-chat-panel-shell project-chat-panel-heavy project-hardline-panel project-detail-flat-panel !border-0 p-5 sm:p-6" x-show="!chatHidden" x-transition.opacity.duration.150ms>
   <div class="flex items-center justify-between gap-3">
     <div>
       <p class="kicker">聊天区</p>
@@ -118,7 +117,6 @@
         {{ else }}
         <div class="project-chat-empty">
           <p class="text-sm font-medium text-slate-800">还没有对话消息</p>
-          <p class="mt-2 text-sm leading-6 text-slate-600">{{ if .ShowChatComposer }}提交下面的需求后，这里会出现一来一回的生成记录。{{ else }}当前页面处于只读模式。{{ end }}</p>
         </div>
         {{ end }}
       </div>
@@ -162,7 +160,7 @@
               </div>
               <div class="min-w-0">
                 <p class="text-sm font-semibold text-slate-900">AI 正在生成...</p>
-                <p class="mt-1 text-xs leading-5 text-slate-500" x-text="steps[stepIndex]">正在理解你的需求...</p>
+                <p class="mt-1 text-xs leading-5 text-slate-500" x-text="currentStepText()">步骤 1/4 · 正在理解你的需求...</p>
               </div>
               <div class="ai-generate-dots ml-auto mt-0.5" aria-hidden="true">
                 <span class="ai-generate-dot"></span>
@@ -171,7 +169,7 @@
               </div>
             </div>
             <div class="ai-generate-progress mt-3" aria-hidden="true">
-              <div class="ai-generate-progress-bar"></div>
+              <div class="ai-generate-progress-bar" x-bind:style="progressBarStyle()"></div>
             </div>
             <div class="mt-3 grid gap-2">
               <div class="ai-generate-line ai-generate-line-1"></div>
@@ -193,7 +191,7 @@
         >{{ .GenerateFormPrompt }}</textarea>
 
         <div class="mt-3 flex items-center justify-between gap-3">
-          <p class="text-xs leading-5 text-slate-500">Power by: {{ .GenerationProviderName }}</p>
+          <p class="text-xs leading-5 text-slate-500">Powered by: {{ .GenerationProviderName }}</p>
           <button type="submit" class="btn-primary" x-bind:disabled="working">
             <span class="inline-flex items-center gap-2" x-show="!working">
               <span>发送</span>
@@ -244,14 +242,14 @@
 
 {{ define "project_detail_preview_embed_panel" }}
 <div
-  class="relative surface-mist project-preview-review-shell project-hardline-panel p-5 sm:p-6"
+  class="relative surface-mist project-preview-review-shell project-hardline-panel project-detail-flat-panel !border-0 p-5 sm:p-6"
   x-data="projectShareState($el)"
   data-share-action-path="{{ .ShareActionPath }}"
   data-share-page-path="{{ .SharePagePath }}"
 >
   <div class="flex flex-wrap items-center justify-between gap-3">
     <div>
-      <p class="kicker">App Review</p>
+      <p class="kicker">应用预览</p>
     </div>
     <div class="flex flex-wrap items-center justify-end gap-2">
       {{ if not .IsPublishedPage }}
@@ -296,7 +294,7 @@
           x-show="menuOpen"
           x-transition.origin.top.right.duration.150ms
           x-on:click.outside="closeMenu()"
-          class="absolute right-0 top-full z-30 mt-2 w-80 max-w-[calc(100vw-3rem)] rounded-2xl border border-slate-300 bg-white p-3 shadow-inner-soft"
+          class="absolute right-0 top-full z-30 mt-2 w-80 max-w-[calc(100vw-3rem)] rounded-2xl border border-slate-300 bg-white p-3"
           role="dialog"
           aria-label="更多操作"
         >
@@ -342,7 +340,7 @@
     x-on:click="closeDetails()"
   >
     <div
-      class="w-full max-w-3xl rounded-[1.35rem] border border-white/70 bg-white p-5 shadow-inner-soft sm:p-6"
+      class="w-full max-w-3xl rounded-[1.35rem] border border-white/70 bg-white p-5 sm:p-6"
       x-transition.scale.opacity.duration.150ms
       x-on:click.stop
     >
@@ -350,7 +348,7 @@
         <div>
           <p class="kicker">详细数据</p>
           <h3 id="project-preview-details-title" class="mt-2 text-xl font-semibold tracking-tight text-slate-900">预览区概览与统计</h3>
-          <p class="mt-2 text-sm leading-6 text-slate-600">App Review 主区域已精简为“应用预览画布”，预览模式、页面与区块统计统一在这里查看。</p>
+          <p class="mt-2 text-sm leading-6 text-slate-600">应用预览主区域已精简为“应用预览画布”，预览模式、页面信息与组件统计统一在这里查看。</p>
         </div>
         <button type="button" class="btn-secondary" x-on:click="closeDetails()">关闭</button>
       </div>
@@ -393,15 +391,15 @@
     </div>
   </div>
 
-  <div class="project-preview-frame-host mt-5 overflow-hidden rounded-[1.35rem] border border-white/70 bg-white shadow-inner-soft">
+  <div class="project-preview-frame-host mt-5 overflow-hidden rounded-[1.35rem] border border-white/70 bg-white">
     <div class="project-preview-frame-chrome" aria-hidden="true">
       <div class="project-preview-frame-dots">
         <span class="project-preview-frame-dot is-red"></span>
         <span class="project-preview-frame-dot is-amber"></span>
         <span class="project-preview-frame-dot is-green"></span>
       </div>
-      <div class="project-preview-frame-label">App Preview</div>
-      <div class="project-preview-frame-pill">{{ if eq .PreviewMode "share_readonly" }}Read-only{{ else }}Editable{{ end }}</div>
+      <div class="project-preview-frame-label"></div>
+      <div class="project-preview-frame-pill">{{ if eq .PreviewMode "share_readonly" }}只读模式{{ else }}可编辑模式{{ end }}</div>
     </div>
     <iframe
       title="项目预览器"
@@ -435,7 +433,7 @@
 {{ end }}
 
 {{ define "project_detail_preview_panel" }}
-<div id="project-preview-panel" class="project-preview-flat-scope surface-mist project-hardline-panel p-5 sm:p-6">
+<div id="project-preview-panel">
   <div class="marble-stage p-5 sm:p-6">
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div>
@@ -466,7 +464,7 @@
         {{ end }}
       </div>
       {{ else if .PreviewApp.CurrentPage.Title }}
-      <div class="rounded-2xl bg-white/60 px-4 py-3 text-sm font-medium text-slate-700 shadow-inner-soft">
+      <div class="rounded-2xl bg-white/60 px-4 py-3 text-sm font-medium text-slate-700">
         页面：{{ .PreviewApp.CurrentPage.Title }}
       </div>
       {{ end }}
@@ -483,6 +481,49 @@
       <p class="mt-2 text-sm leading-6 text-slate-600">
         {{ if .ShowChatComposer }}在左侧继续补充需求并点击“生成草稿”，这里会展示真实应用界面（表单、列表、切换状态、统计卡片）。{{ else if .IsSharePage }}分享内容生成后，这里会展示真实应用界面（表单、列表、切换状态、统计卡片）。{{ else if .IsPublishedPage }}发布内容生成后，这里会展示真实应用界面（表单、列表、切换状态、统计卡片）。{{ else }}生成后这里会展示真实应用界面（表单、列表、切换状态、统计卡片）。{{ end }}
       </p>
+      <div
+        class="mt-4 rounded-2xl border border-slate-300 bg-white/70 p-4"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        <div class="flex items-start gap-3">
+          <div class="ai-generate-orb" aria-hidden="true">
+            <div class="ai-generate-orb-ring"></div>
+            <div class="ai-generate-spinner"></div>
+          </div>
+          <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-2">
+              <p class="text-sm font-medium text-slate-800">正在等待首个预览生成</p>
+              <div class="ai-generate-dots" aria-hidden="true">
+                <span class="ai-generate-dot"></span>
+                <span class="ai-generate-dot"></span>
+                <span class="ai-generate-dot"></span>
+              </div>
+            </div>
+            <p class="mt-1 text-xs leading-5 text-slate-500">生成完成后，这里会自动切换为真实应用界面。</p>
+          </div>
+        </div>
+        <div class="ai-generate-progress mt-3" aria-hidden="true">
+          <div class="ai-generate-progress-bar" style="width: 62%;"></div>
+        </div>
+        <div class="mt-4 grid gap-3 sm:grid-cols-2" aria-hidden="true">
+          <div class="rounded-xl border border-slate-300 bg-white/80 p-3">
+            <div class="ai-generate-line ai-generate-line-2"></div>
+            <div class="mt-3 space-y-2">
+              <div class="ai-generate-line ai-generate-line-1"></div>
+              <div class="ai-generate-line ai-generate-line-3"></div>
+            </div>
+          </div>
+          <div class="rounded-xl border border-slate-300 bg-white/80 p-3">
+            <div class="ai-generate-line ai-generate-line-3"></div>
+            <div class="mt-3 space-y-2">
+              <div class="ai-generate-line ai-generate-line-1"></div>
+              <div class="ai-generate-line ai-generate-line-2"></div>
+            </div>
+          </div>
+        </div>
+      </div>
       <div class="mt-3 flex flex-wrap gap-2">
         <span class="prompt-hint-chip">增加状态筛选</span>
         <span class="prompt-hint-chip">显示完成率统计</span>
@@ -501,7 +542,7 @@
 
 {{ if eq $block.Type "nav" }}
 <section class="ghost-subpanel !border-0">
-  <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Nav</p>
+  <p class="text-[11px] font-semibold tracking-[0.08em] text-slate-500">页面导航</p>
   <div class="mt-3 flex flex-wrap gap-2">
     {{ range $block.Nav.Items }}
     <a
@@ -521,12 +562,21 @@
 
 {{ if eq $block.Type "stats" }}
 <section class="ghost-subpanel !border-0">
-  <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Stats</p>
-  <div class="mt-3 grid gap-3 sm:grid-cols-2">
+  <p class="text-[11px] font-semibold tracking-[0.08em] text-slate-500">数据统计</p>
+  <div class="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    {{ if gt (len $block.StatsCards) 0 }}
+      {{ range $block.StatsCards }}
+      <div class="m5-stat-card">
+        <p class="text-xs font-medium text-slate-500">{{ .Label }}</p>
+        <p class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{{ .Value }}</p>
+      </div>
+      {{ end }}
+    {{ else if $block.Stats }}
     <div class="m5-stat-card">
       <p class="text-xs font-medium text-slate-500">{{ $block.Stats.Label }}</p>
       <p class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{{ $block.Stats.Value }}</p>
     </div>
+    {{ end }}
   </div>
 </section>
 {{ end }}
@@ -534,9 +584,9 @@
 {{ if eq $block.Type "timer" }}
 <section class="ghost-subpanel !border-0" x-data="m5TimerState({ workMinutes: {{ $block.Timer.WorkMinutes }}, breakMinutes: {{ $block.Timer.BreakMinutes }} })">
   <div class="flex items-center justify-between gap-3">
-    <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Timer{{ if $block.Timer.SessionCollection }} · {{ $block.Timer.SessionCollection }}{{ end }}</p>
+    <p class="text-[11px] font-semibold tracking-[0.08em] text-slate-500">专注计时{{ if $block.Timer.SessionCollection }} · {{ $block.Timer.SessionCollection }}{{ end }}</p>
     <div class="flex items-center gap-2">
-      <span class="project-chip">{{ $block.Timer.WorkMinutes }}/{{ $block.Timer.BreakMinutes }}</span>
+      <span class="project-chip">{{ $block.Timer.WorkMinutes }}/{{ $block.Timer.BreakMinutes }} 分钟</span>
       {{ if $root.PreviewApp.ReadOnly }}<span class="text-xs text-slate-400">只读</span>{{ end }}
     </div>
   </div>
@@ -607,7 +657,7 @@
     </div>
   </form>
   {{ else }}
-  <p class="mt-4 text-sm leading-6 text-slate-500">Timer 已渲染，但无法自动识别记录字段（需要数值分钟字段）。</p>
+  <p class="mt-4 text-sm leading-6 text-slate-500">计时器已渲染，但无法自动识别记录字段（需要数值类型的分钟数字段）。</p>
   {{ end }}
 </section>
 {{ end }}
@@ -616,7 +666,7 @@
 <section class="ghost-subpanel !border-0">
   {{ $isEditing := and (eq $root.PreviewEditCollection $block.Form.Collection) (gt $root.PreviewEditRecordID 0) }}
   <div class="flex items-center justify-between gap-3">
-    <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Form · {{ $block.Form.Collection }}</p>
+    <p class="text-[11px] font-semibold tracking-[0.08em] text-slate-500">记录表单 · {{ $block.Form.Collection }}</p>
     <div class="flex items-center gap-2">
       {{ if $isEditing }}<span class="text-xs text-slate-500">编辑 #{{ $root.PreviewEditRecordID }}</span>{{ end }}
       {{ if $root.PreviewApp.ReadOnly }}<span class="text-xs text-slate-400">只读</span>{{ end }}
@@ -654,10 +704,10 @@
         {{ end }}
       </select>
       {{ else if eq .Type "bool" }}
-      <div class="mt-2 flex items-center gap-2 rounded-2xl bg-white/80 px-3 py-2 shadow-inner-soft">
+      <div class="mt-2 flex items-center gap-2 rounded-2xl bg-white/80 px-3 py-2">
         <input type="hidden" name="{{ .Name }}" value="0">
         <input id="m5-form-{{ .Name }}" type="checkbox" name="{{ .Name }}" value="1" class="h-4 w-4 rounded border-slate-300 text-slate-900" {{ if isTruthy $fieldValue }}checked{{ end }} {{ if $root.PreviewApp.ReadOnly }}disabled{{ end }}>
-        <label for="m5-form-{{ .Name }}" class="text-sm text-slate-700">勾选为 true</label>
+        <label for="m5-form-{{ .Name }}" class="text-sm text-slate-700">勾选表示开启</label>
       </div>
       {{ else }}
       <input
@@ -698,12 +748,12 @@
 {{ if eq $block.Type "list" }}
 <section class="ghost-subpanel !border-0">
   <div class="flex items-center justify-between gap-3">
-    <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">List · {{ $block.List.Collection }}</p>
+    <p class="text-[11px] font-semibold tracking-[0.08em] text-slate-500">数据列表 · {{ $block.List.Collection }}</p>
     <span class="text-xs text-slate-500">{{ len $block.List.Rows }} 条</span>
   </div>
 
   {{ if $block.List.Rows }}
-  <div class="mt-3 overflow-x-auto rounded-2xl bg-white/70 shadow-inner-soft">
+  <div class="mt-3 overflow-x-auto rounded-2xl bg-white/70">
     <table class="m5-table">
       <thead>
         <tr>
@@ -722,8 +772,37 @@
         {{ end }}
         {{ range $block.List.Rows }}
         <tr>
+          {{ $row := . }}
           {{ range .Cells }}
-          <td class="{{ .ValueClass }}">{{ .ValueText }}</td>
+          <td class="{{ .ValueClass }}">
+            {{ if and (not $root.PreviewApp.ReadOnly) .BoolToggleable }}
+            <form
+              method="post"
+              action="{{ $root.PreviewActionBasePath }}/toggle/{{ $block.List.Collection }}/{{ $row.ID }}/{{ .FieldName }}"
+              class="inline-flex items-center"
+              hx-post="{{ $root.PreviewActionBasePath }}/toggle/{{ $block.List.Collection }}/{{ $row.ID }}/{{ .FieldName }}"
+              hx-target="#project-preview-panel"
+              hx-swap="outerHTML"
+              hx-sync="this:replace"
+            >
+              <input type="hidden" name="page_id" value="{{ $root.PreviewPageID }}">
+              <input type="hidden" name="preview_mode" value="{{ $root.PreviewMode }}">
+              <input type="hidden" name="edit_collection" value="{{ $root.PreviewEditCollection }}">
+              <input type="hidden" name="edit_record" value="{{ $root.PreviewEditRecordID }}">
+              <button
+                type="submit"
+                class="m5-toggle-btn {{ if .BoolValue }}is-on{{ else }}is-off{{ end }}"
+                aria-label="{{ if .BoolValue }}标记为未完成{{ else }}标记为已完成{{ end }}"
+                title="{{ if .BoolValue }}点击标记为未完成{{ else }}点击标记为已完成{{ end }}"
+              >
+                <span class="m5-toggle-knob" aria-hidden="true"></span>
+                <span class="sr-only">{{ if .BoolValue }}已完成{{ else }}未完成{{ end }}</span>
+              </button>
+            </form>
+            {{ else }}
+            {{ .ValueText }}
+            {{ end }}
+          </td>
           {{ end }}
           {{ if not $root.PreviewApp.ReadOnly }}
           <td>
@@ -771,11 +850,15 @@
 {{ if eq $block.Type "toggle" }}
 <section class="ghost-subpanel !border-0">
   <div class="flex items-center justify-between gap-3">
-    <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Toggle · {{ $block.Toggle.Collection }}.{{ $block.Toggle.Field }}</p>
+    <p class="text-[11px] font-semibold tracking-[0.08em] text-slate-500">状态切换 · {{ $block.Toggle.Collection }}.{{ $block.Toggle.Field }}</p>
     {{ if $root.PreviewApp.ReadOnly }}<span class="text-xs text-slate-400">只读</span>{{ end }}
   </div>
 
   {{ if $block.Toggle.Rows }}
+  {{ $toggleEditPageID := $root.PreviewPageID }}
+  {{ if $block.Toggle.EditPageID }}
+    {{ $toggleEditPageID = $block.Toggle.EditPageID }}
+  {{ end }}
   <div class="mt-3 space-y-2">
     {{ range $block.Toggle.Rows }}
     <form
@@ -795,11 +878,25 @@
       <input type="hidden" name="edit_record" value="{{ $root.PreviewEditRecordID }}">
       <div class="min-w-0">
         <p class="truncate text-sm font-medium text-slate-800">{{ .Title }}</p>
-        <p class="text-xs text-slate-500">{{ if .On }}true{{ else }}false{{ end }}</p>
+        <p class="text-xs text-slate-500">{{ if .On }}已开启{{ else }}已关闭{{ end }}</p>
       </div>
-      <button type="submit" class="m5-toggle-btn {{ if .On }}is-on{{ else }}is-off{{ end }}" {{ if $root.PreviewApp.ReadOnly }}disabled{{ end }}>
-        <span class="m5-toggle-knob" aria-hidden="true"></span>
-      </button>
+      <div class="flex items-center gap-3">
+        {{ if not $root.PreviewApp.ReadOnly }}
+        <a
+          href="{{ $root.PreviewPageBasePath }}?page={{ $toggleEditPageID }}&edit_collection={{ $block.Toggle.Collection }}&edit_record={{ .RecordID }}"
+          class="shrink-0 text-xs text-slate-600 hover:text-slate-900"
+          {{ if $root.PreviewPanelPath }}
+          hx-get="{{ $root.PreviewPanelPath }}?page={{ $toggleEditPageID }}&edit_collection={{ $block.Toggle.Collection }}&edit_record={{ .RecordID }}"
+          hx-target="#project-preview-panel"
+          hx-swap="outerHTML"
+          hx-push-url="false"
+          {{ end }}
+        >编辑</a>
+        {{ end }}
+        <button type="submit" class="m5-toggle-btn {{ if .On }}is-on{{ else }}is-off{{ end }}" {{ if $root.PreviewApp.ReadOnly }}disabled{{ end }}>
+          <span class="m5-toggle-knob" aria-hidden="true"></span>
+        </button>
+      </div>
     </form>
     {{ end }}
   </div>
@@ -811,7 +908,7 @@
 
 {{ if $block.UnsupportedText }}
 <section class="ghost-subpanel !border-0">
-  <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Primitive</p>
+  <p class="text-[11px] font-semibold tracking-[0.08em] text-slate-500">未支持组件</p>
   <p class="mt-2 text-sm leading-6 text-slate-600">{{ $block.UnsupportedText }}</p>
 </section>
 {{ end }}

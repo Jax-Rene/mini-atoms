@@ -204,3 +204,86 @@ func TestDeepSeekClient_GenerateSpecJSON_NormalizesCommonAliases(t *testing.T) {
 		t.Fatalf("expected page.title alias normalized, got %q", got)
 	}
 }
+
+func TestDeepSeekClient_buildMessages_IncludesStrictOutputFormatRules(t *testing.T) {
+	t.Parallel()
+
+	client := NewDeepSeekClient(DeepSeekClientConfig{
+		AppBaseURL: "http://localhost:8080",
+	})
+
+	msgs := client.buildMessages(ClientRequest{
+		UserPrompt:       "做一个待办应用",
+		CurrentDraftJSON: `{"app_name":"Old"}`,
+		RepairError:      `validate spec: page "dashboard" block[2] toggle.collection is required`,
+	})
+	if len(msgs) != 2 {
+		t.Fatalf("messages len = %d, want 2", len(msgs))
+	}
+	if msgs[0].Role != "system" {
+		t.Fatalf("system role = %q", msgs[0].Role)
+	}
+	systemPrompt := msgs[0].Content
+	for _, want := range []string{
+		"单个 JSON 对象",
+		"顶层必须包含 app_name、collections、pages",
+		"不要把结果包在 spec/result/data",
+		"list/form/toggle/stats",
+		"必须显式包含 collection（不能省略）",
+	} {
+		if !strings.Contains(systemPrompt, want) {
+			t.Fatalf("system prompt missing %q:\n%s", want, systemPrompt)
+		}
+	}
+
+	userPrompt := msgs[1].Content
+	for _, want := range []string{
+		"当前草稿（可参考并重写为完整 JSON）",
+		"上一次输出存在错误，请修复并重新输出完整 JSON",
+		`toggle.collection is required`,
+		"http://localhost:8080",
+	} {
+		if !strings.Contains(userPrompt, want) {
+			t.Fatalf("user prompt missing %q:\n%s", want, userPrompt)
+		}
+	}
+}
+
+func TestNormalizeSpecAliasesJSON_NormalizesBlockAliases(t *testing.T) {
+	t.Parallel()
+
+	raw := `{
+		"name":"待办应用",
+		"collections":[{"name":"todos","fields":[{"name":"title","type":"text"},{"name":"done","type":"bool"}]}],
+		"pages":[
+			{
+				"name":"dashboard",
+				"components":[
+					{"kind":"list","source":"todos"},
+					{"kind":"toggle","source":"todos","field":"done"},
+					{"kind":"nav","items":[{"label":"首页","pageId":"dashboard"}]}
+				]
+			}
+		]
+	}`
+
+	got := normalizeSpecAliasesJSON(raw)
+
+	for _, want := range []string{
+		`"app_name":"待办应用"`,
+		`"id":"dashboard"`,
+		`"blocks":[`,
+		`"type":"list"`,
+		`"collection":"todos"`,
+		`"page_id":"dashboard"`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("normalized JSON missing %q: %s", want, got)
+		}
+	}
+	for _, bad := range []string{`"components"`, `"kind"`, `"source"`, `"pageId"`} {
+		if strings.Contains(got, bad) {
+			t.Fatalf("normalized JSON still contains alias %q: %s", bad, got)
+		}
+	}
+}

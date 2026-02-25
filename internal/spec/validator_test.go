@@ -74,6 +74,65 @@ func TestValidateAppSpec_RejectsStatsSumNonNumericField(t *testing.T) {
 	}
 }
 
+func TestValidateAppSpec_RequiresCollectionForCollectionBackedBlocks(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name      string
+		block     BlockSpec
+		wantError string
+	}{
+		{
+			name:      "list",
+			block:     BlockSpec{Type: "list"},
+			wantError: `page "dashboard" block[2] list.collection is required`,
+		},
+		{
+			name:      "form",
+			block:     BlockSpec{Type: "form"},
+			wantError: `page "dashboard" block[2] form.collection is required`,
+		},
+		{
+			name:      "toggle",
+			block:     BlockSpec{Type: "toggle", Field: "done"},
+			wantError: `page "dashboard" block[2] toggle.collection is required`,
+		},
+		{
+			name:      "stats",
+			block:     BlockSpec{Type: "stats", Metric: "count"},
+			wantError: `page "dashboard" block[2] stats.collection is required`,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			s := validTestSpec()
+			s.Pages = []PageSpec{
+				{
+					ID:    "dashboard",
+					Title: "Dashboard",
+					Blocks: []BlockSpec{
+						{Type: "nav", Items: []NavItemSpec{{Label: "Dashboard", PageID: "dashboard"}}},
+						{Type: "list", Collection: "todos"},
+						tc.block,
+					},
+				},
+			}
+
+			err := ValidateAppSpec(s)
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if !strings.Contains(err.Error(), tc.wantError) {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
 func validTestSpec() AppSpec {
 	return AppSpec{
 		AppName: "Todo App",

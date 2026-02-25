@@ -30,12 +30,14 @@ type NavItemSpec struct {
 	PageID string `json:"page_id"`
 }
 
+type BlockFieldList []string
+
 type BlockSpec struct {
 	Type string `json:"type"`
 
-	Collection string   `json:"collection,omitempty"`
-	Fields     []string `json:"fields,omitempty"`
-	Field      string   `json:"field,omitempty"`
+	Collection string         `json:"collection,omitempty"`
+	Fields     BlockFieldList `json:"fields,omitempty"`
+	Field      string         `json:"field,omitempty"`
 
 	Metric string `json:"metric,omitempty"`
 	Label  string `json:"label,omitempty"`

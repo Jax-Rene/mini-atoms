@@ -140,15 +140,24 @@ func (c *DeepSeekClient) buildMessages(req ClientRequest) []deepSeekMessage {
 你是 mini-atoms 的 Spec 生成器。你必须只输出 JSON（不要 markdown 代码块、不要解释文字）。
 返回一个完整的 app spec，用于 mini-atoms 渲染。
 
-约束：
+输出格式（严格）：
+- 输出必须是单个 JSON 对象，不要前后缀文本，不要代码块，不要注释
+- 顶层必须包含 app_name、collections、pages
+- 顶层不要把结果包在 spec/result/data 等额外对象里
+- 所有 key 使用 snake_case（例如 app_name、page_id、session_collection）
+
+结构约束：
 - 允许 blocks: nav, list, form, toggle, stats, timer
 - 允许字段类型: text, int, real, bool, date, datetime, enum
 - collections <= 5；每个 collection 字段 <= 10
+- list/form/toggle/stats 每个 block 都必须显式包含 collection（不能省略），即使同页其他 block 已写过
 - toggle.field 必须引用 bool 字段
 - stats.metric 只允许 count 或 sum
 - stats.metric = sum 时 field 必须是 int 或 real
 - enum 字段必须包含非空 options
 - pages 和 collections 必须完整可用
+- nav.items[*].page_id 必须引用已存在的 pages[*].id
+- 如果收到修复错误信息，必须逐项修复后重新输出完整 JSON（不是差量）
 `)
 
 	var userBuilder strings.Builder
@@ -276,6 +285,7 @@ func normalizeSpecAliasesJSON(s string) string {
 			if !ok {
 				continue
 			}
+			moveAliasValue(pm, "blocks", "components")
 			if _, hasID := pm["id"]; !hasID {
 				if name, ok := pm["name"].(string); ok && strings.TrimSpace(name) != "" {
 					pm["id"] = strings.TrimSpace(name)
@@ -285,6 +295,39 @@ func normalizeSpecAliasesJSON(s string) string {
 				if label, ok := pm["label"].(string); ok && strings.TrimSpace(label) != "" {
 					pm["title"] = strings.TrimSpace(label)
 				}
+			}
+			normalizeStringAlias(pm, "id", "page_id", "pageId")
+			normalizeStringAlias(pm, "title", "page_title")
+
+			if blocks, ok := pm["blocks"].([]any); ok {
+				for j, b := range blocks {
+					bm, ok := b.(map[string]any)
+					if !ok {
+						continue
+					}
+
+					normalizeStringAlias(bm, "type", "kind", "block_type", "blockType")
+					normalizeStringAlias(bm, "collection", "source", "dataset", "collection_name", "collectionName", "table")
+					normalizeStringAlias(bm, "field", "column", "field_name", "fieldName")
+					normalizeStringAlias(bm, "metric", "metric_type", "metricType", "aggregation")
+					normalizeStringAlias(bm, "session_collection", "sessionCollection", "session_collection_name")
+					moveAliasValue(bm, "items", "links", "nav_items", "navItems")
+
+					if items, ok := bm["items"].([]any); ok {
+						for k, item := range items {
+							im, ok := item.(map[string]any)
+							if !ok {
+								continue
+							}
+							normalizeStringAlias(im, "page_id", "pageId", "page")
+							items[k] = im
+						}
+						bm["items"] = items
+					}
+
+					blocks[j] = bm
+				}
+				pm["blocks"] = blocks
 			}
 			pages[i] = pm
 		}
@@ -296,4 +339,66 @@ func normalizeSpecAliasesJSON(s string) string {
 		return s
 	}
 	return string(normalized)
+}
+
+func moveAliasValue(m map[string]any, target string, aliases ...string) {
+	if m == nil {
+		return
+	}
+	if _, ok := m[target]; ok {
+		for _, alias := range aliases {
+			delete(m, alias)
+		}
+		return
+	}
+	for _, alias := range aliases {
+		if v, ok := m[alias]; ok {
+			m[target] = v
+			break
+		}
+	}
+	for _, alias := range aliases {
+		delete(m, alias)
+	}
+}
+
+func normalizeStringAlias(m map[string]any, target string, aliases ...string) {
+	if m == nil {
+		return
+	}
+
+	if v, ok := m[target]; ok {
+		if s, ok := v.(string); ok {
+			if trimmed := strings.TrimSpace(s); trimmed != "" {
+				m[target] = trimmed
+				for _, alias := range aliases {
+					delete(m, alias)
+				}
+				return
+			}
+		} else {
+			for _, alias := range aliases {
+				delete(m, alias)
+			}
+			return
+		}
+	}
+
+	for _, alias := range aliases {
+		raw, ok := m[alias]
+		if !ok {
+			continue
+		}
+		s, ok := raw.(string)
+		if !ok {
+			continue
+		}
+		if trimmed := strings.TrimSpace(s); trimmed != "" {
+			m[target] = trimmed
+			break
+		}
+	}
+	for _, alias := range aliases {
+		delete(m, alias)
+	}
 }

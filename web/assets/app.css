@@ -593,7 +593,6 @@
 
   .project-detail-workbench-stage {
     position: relative;
-    padding: 0.45rem;
     border-radius: 0.95rem;
     background:
       radial-gradient(42rem 16rem at 8% 0%, rgba(255, 255, 255, 0.85), transparent 65%),
@@ -1536,14 +1535,13 @@
 
   .ai-generate-progress-bar {
     height: 100%;
-    width: 42%;
+    width: 0;
     border-radius: inherit;
     background:
       linear-gradient(90deg, rgba(59, 130, 246, 0.8), rgba(14, 165, 233, 0.75), rgba(168, 85, 247, 0.65));
     background-size: 180% 100%;
-    animation:
-      ai-progress-slide 1.15s ease-in-out infinite,
-      ai-shimmer 1.8s linear infinite;
+    transition: width 280ms ease-out;
+    animation: ai-shimmer 1.8s linear infinite;
   }
 
   .ai-generate-line {
@@ -1885,7 +1883,7 @@
 
   .linear-hero-subtitle {
     margin-top: 0.55rem;
-    color: #94a3b8;
+    color: #64748b;
     font-size: 0.98rem;
     line-height: 1.5;
   }
@@ -1949,6 +1947,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    gap: 0.4rem;
     position: absolute;
     top: 50%;
     right: 0.5rem;
@@ -1965,6 +1964,31 @@
     line-height: 1;
     white-space: nowrap;
     box-shadow: none;
+    transition: background-color 120ms ease, border-color 120ms ease, opacity 120ms ease;
+    cursor: pointer;
+  }
+
+  .linear-compose-submit:hover {
+    background: #111827;
+    border-color: #111827;
+  }
+
+  .linear-compose-submit:disabled,
+  .linear-compose-submit[data-loading="true"] {
+    cursor: wait;
+    opacity: 0.9;
+    background: #111827;
+    border-color: #111827;
+  }
+
+  .linear-compose-submit[data-loading="true"]::before {
+    content: "";
+    width: 0.65rem;
+    height: 0.65rem;
+    border-radius: 9999px;
+    border: 1.5px solid rgba(255, 255, 255, 0.35);
+    border-top-color: #ffffff;
+    animation: linear-spin 0.8s linear infinite;
   }
 
   .linear-compose-footer {
@@ -2005,7 +2029,7 @@
   }
 
   .linear-compose-hint {
-    color: #94a3b8;
+    color: #64748b;
     font-size: 12px;
     line-height: 1.45;
   }
@@ -2196,7 +2220,17 @@
   }
 
   .linear-showcase-item-static {
-    cursor: default;
+    cursor: pointer;
+  }
+
+  .linear-showcase-item:focus-visible {
+    outline: 2px solid rgba(59, 130, 246, 0.3);
+    outline-offset: 2px;
+  }
+
+  .linear-showcase-item-static.is-filled {
+    border-color: rgba(99, 102, 241, 0.45);
+    background: rgba(238, 242, 255, 0.45);
   }
 
   .linear-showcase-item-top {
@@ -2257,13 +2291,22 @@
   }
 
   .linear-showcase-desc {
-    color: #64748b;
+    color: #475569;
     font-size: 12px;
     line-height: 1.5;
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
     overflow: hidden;
+  }
+
+  @keyframes linear-spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   .linear-code {
@@ -2438,6 +2481,110 @@
     background:
       radial-gradient(40rem 14rem at 100% 0%, rgba(226, 232, 240, 0.24), transparent 68%),
       linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.94));
+  }
+
+  /* Project detail page requested flat surfaces (no gradients on the main shells). */
+  .project-detail-flat-surface {
+    background: #fff;
+    background-image: none;
+  }
+
+  .project-detail-flat-surface::after {
+    display: none;
+    background: none;
+  }
+
+  .project-detail-flat-surface .project-hero-lead-shell {
+    background: #fff;
+    background-image: none;
+  }
+
+  .project-hardline-workbench .project-detail-flat-panel,
+  .project-hardline-workbench .project-detail-flat-panel.project-hardline-panel {
+    border-width: 0;
+    border-color: transparent;
+    background: #fff;
+    background-image: none;
+  }
+
+  .project-detail-workbench-stage .ghost-panel,
+  .project-detail-workbench-stage .surface-mist,
+  .project-detail-workbench-stage .ghost-subpanel,
+  .project-detail-workbench-stage .marble-stage,
+  .project-detail-workbench-stage .preview-insight-card,
+  .project-detail-workbench-stage .project-config-details,
+  .project-detail-workbench-stage .project-config-pre,
+  .project-detail-workbench-stage .empty-preview-shell,
+  .project-detail-workbench-stage .project-chat-empty,
+  .project-detail-workbench-stage .m5-stat-card,
+  .project-detail-workbench-stage .m5-timer-shell,
+  .project-detail-workbench-stage .m5-toggle-row,
+  .project-detail-workbench-stage .project-hardline-panel,
+  .project-detail-workbench-stage .project-chat-thread-stage,
+  .project-detail-workbench-stage .project-chat-thread-body,
+  .project-detail-workbench-stage .project-chat-composer-footer,
+  .project-detail-workbench-stage .project-chat-composer-input,
+  .project-detail-workbench-stage .project-preview-frame-shell,
+  .project-detail-workbench-stage .project-preview-frame-chrome,
+  .project-detail-workbench-stage .project-chip,
+  .project-detail-workbench-stage .prompt-hint-chip,
+  .project-detail-workbench-stage .chat-role-badge,
+  .project-detail-workbench-stage .m5-page-tab,
+  .project-detail-workbench-stage .btn-secondary,
+  .project-detail-workbench-stage .error-box {
+    background-image: none;
+  }
+
+  .project-detail-workbench-stage .ghost-panel,
+  .project-detail-workbench-stage .surface-mist,
+  .project-detail-workbench-stage .ghost-subpanel,
+  .project-detail-workbench-stage .marble-stage,
+  .project-detail-workbench-stage .preview-insight-card,
+  .project-detail-workbench-stage .project-config-details,
+  .project-detail-workbench-stage .project-config-pre,
+  .project-detail-workbench-stage .empty-preview-shell,
+  .project-detail-workbench-stage .project-chat-empty,
+  .project-detail-workbench-stage .m5-stat-card,
+  .project-detail-workbench-stage .m5-timer-shell,
+  .project-detail-workbench-stage .m5-toggle-row,
+  .project-detail-workbench-stage .project-hardline-panel,
+  .project-detail-workbench-stage .project-chat-thread-stage,
+  .project-detail-workbench-stage .project-chat-thread-body,
+  .project-detail-workbench-stage .project-chat-composer-input,
+  .project-detail-workbench-stage .project-preview-frame-shell,
+  .project-detail-workbench-stage .project-preview-frame-chrome,
+  .project-detail-workbench-stage .project-chip,
+  .project-detail-workbench-stage .prompt-hint-chip,
+  .project-detail-workbench-stage .chat-role-badge,
+  .project-detail-workbench-stage .m5-page-tab {
+    background-color: #fff;
+  }
+
+  .project-detail-workbench-stage .project-chat-composer-footer {
+    background-color: transparent;
+  }
+
+  .project-detail-workbench-stage .btn-primary {
+    background: #111827;
+    background-image: none;
+  }
+
+  .project-detail-workbench-stage .btn-primary:hover {
+    background: #0f172a;
+  }
+
+  .project-detail-workbench-stage .error-box {
+    background-color: rgba(255, 255, 255, 0.92);
+  }
+
+  .project-detail-workbench-stage .ai-generate-progress-bar {
+    background: rgba(59, 130, 246, 0.78);
+    background-image: none;
+  }
+
+  .project-detail-workbench-stage .ai-generate-line {
+    background: rgba(226, 232, 240, 0.95);
+    background-image: none;
   }
 
   .project-hardline-hero .project-share-toast {

@@ -27,7 +27,11 @@ import (
 	webfs "mini-atoms/web"
 )
 
-const sessionCookieName = "mini_atoms_session"
+const (
+	sessionCookieName = "mini_atoms_session"
+	demoLoginEmail    = "demo@mini-atoms.local"
+	demoLoginPassword = "demo123456"
+)
 
 type Dependencies struct {
 	Config config.Config
@@ -59,9 +63,11 @@ type templateData struct {
 
 	Error string
 
-	FormEmail       string
-	ProjectFormName string
-	ProjectFormGoal string
+	FormEmail         string
+	DemoLoginEmail    string
+	DemoLoginPassword string
+	ProjectFormName   string
+	ProjectFormGoal   string
 
 	Projects               []projectCardView
 	ShowcaseProjects       []projectCardView
@@ -176,6 +182,7 @@ func NewRouter(deps Dependencies) (http.Handler, error) {
 	engine.POST("/register", s.handleRegisterSubmit)
 	engine.GET("/login", s.handleLoginPage)
 	engine.POST("/login", s.handleLoginSubmit)
+	engine.POST("/login/demo", s.handleDemoLoginSubmit)
 	engine.POST("/logout", s.handleLogoutSubmit)
 	engine.GET("/p/:slug", s.handlePublishedProjectPage)
 	engine.GET("/p/:slug/preview/frame", s.handlePublishedProjectPreviewFramePage)
@@ -348,6 +355,31 @@ func (s *server) handleLoginSubmit(c *gin.Context) {
 	}
 
 	if err := s.startSession(c, user.ID); err != nil {
+		c.String(http.StatusInternalServerError, "create session failed")
+		return
+	}
+
+	c.Redirect(http.StatusSeeOther, "/projects")
+}
+
+func (s *server) handleDemoLoginSubmit(c *gin.Context) {
+	user, err := s.resolveCurrentUser(c)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "load session failed")
+		return
+	}
+	if user != nil {
+		c.Redirect(http.StatusSeeOther, "/projects")
+		return
+	}
+
+	demoUser, err := s.ensureDemoUser(c.Request.Context())
+	if err != nil {
+		c.String(http.StatusInternalServerError, "prepare demo user failed")
+		return
+	}
+
+	if err := s.startSession(c, demoUser.ID); err != nil {
 		c.String(http.StatusInternalServerError, "create session failed")
 		return
 	}
@@ -822,6 +854,35 @@ func (s *server) currentUserFromContext(c *gin.Context) (store.User, bool) {
 	return user, true
 }
 
+func (s *server) ensureDemoUser(ctx context.Context) (store.User, error) {
+	user, err := s.authRepo.GetUserByEmail(ctx, demoLoginEmail)
+	if err == nil {
+		return user, nil
+	}
+	if !errors.Is(err, store.ErrNotFound) {
+		return store.User{}, fmt.Errorf("load demo user: %w", err)
+	}
+
+	passwordHash, err := auth.HashPassword(demoLoginPassword)
+	if err != nil {
+		return store.User{}, fmt.Errorf("hash demo password: %w", err)
+	}
+
+	user, err = s.authRepo.CreateUser(ctx, demoLoginEmail, passwordHash)
+	if err == nil {
+		return user, nil
+	}
+	if errors.Is(err, store.ErrConflict) {
+		user, getErr := s.authRepo.GetUserByEmail(ctx, demoLoginEmail)
+		if getErr != nil {
+			return store.User{}, fmt.Errorf("reload demo user after conflict: %w", getErr)
+		}
+		return user, nil
+	}
+
+	return store.User{}, fmt.Errorf("create demo user: %w", err)
+}
+
 func (s *server) startSession(c *gin.Context, userID int64) error {
 	exp := auth.NewSessionExpiry(time.Now())
 
@@ -873,10 +934,12 @@ func (s *server) renderRegisterPage(c *gin.Context, status int, email, errMsg st
 
 func (s *server) renderLoginPage(c *gin.Context, status int, email, errMsg string) {
 	s.renderTemplate(c, status, templateData{
-		Title:           "Login - mini-atoms",
-		ContentTemplate: "login_content",
-		FormEmail:       email,
-		Error:           errMsg,
+		Title:             "Login - mini-atoms",
+		ContentTemplate:   "login_content",
+		FormEmail:         email,
+		DemoLoginEmail:    demoLoginEmail,
+		DemoLoginPassword: demoLoginPassword,
+		Error:             errMsg,
 	})
 }
 

@@ -77,6 +77,7 @@ type BlockView struct {
 	List            *ListBlockView
 	Toggle          *ToggleBlockView
 	Stats           *StatsBlockView
+	StatsCards      []StatsBlockView
 	Timer           *TimerBlockView
 	UnsupportedText string
 }
@@ -124,14 +125,17 @@ type ListRowView struct {
 }
 
 type ListCellView struct {
-	FieldName  string
-	ValueText  string
-	ValueClass string
+	FieldName      string
+	ValueText      string
+	ValueClass     string
+	BoolToggleable bool
+	BoolValue      bool
 }
 
 type ToggleBlockView struct {
 	Collection string
 	Field      string
+	EditPageID string
 	Rows       []ToggleRowView
 }
 
@@ -217,7 +221,7 @@ func RenderApp(input RenderInput) (AppView, error) {
 			if !ok {
 				return AppView{}, fmt.Errorf("render app: missing collection data %q", b.Collection)
 			}
-			fields := resolveFieldsForBlock(b.Fields, coll.Schema)
+			fields := resolveFieldsForBlock([]string(b.Fields), coll.Schema)
 			formFields := make([]FormFieldView, 0, len(fields))
 			for _, f := range fields {
 				formFields = append(formFields, FormFieldView{
@@ -240,7 +244,7 @@ func RenderApp(input RenderInput) (AppView, error) {
 			if !ok {
 				return AppView{}, fmt.Errorf("render app: missing collection data %q", b.Collection)
 			}
-			fields := resolveFieldsForBlock(b.Fields, coll.Schema)
+			fields := resolveFieldsForBlock([]string(b.Fields), coll.Schema)
 			columns := make([]ListColumnView, 0, len(fields))
 			for _, f := range fields {
 				columns = append(columns, ListColumnView{Name: f.Name, Label: humanizeName(f.Name)})
@@ -250,10 +254,16 @@ func RenderApp(input RenderInput) (AppView, error) {
 				row := ListRowView{ID: rec.ID, Cells: make([]ListCellView, 0, len(fields))}
 				for _, f := range fields {
 					val := rec.Data[f.Name]
+					boolValue, boolOK := false, false
+					if f.Type == specpkg.FieldTypeBool {
+						boolValue, boolOK = recordBool(val)
+					}
 					row.Cells = append(row.Cells, ListCellView{
-						FieldName:  f.Name,
-						ValueText:  formatFieldValue(f.Type, val),
-						ValueClass: valueClassForField(f.Type, val),
+						FieldName:      f.Name,
+						ValueText:      formatFieldValue(f.Type, val),
+						ValueClass:     valueClassForField(f.Type, val),
+						BoolToggleable: f.Type == specpkg.FieldTypeBool && boolOK,
+						BoolValue:      boolValue,
 					})
 				}
 				rows = append(rows, row)
@@ -276,7 +286,7 @@ func RenderApp(input RenderInput) (AppView, error) {
 				on, _ := recordBool(rec.Data[b.Field])
 				title := formatFieldValue(titleField.Type, rec.Data[titleField.Name])
 				if strings.TrimSpace(title) == "" || title == "—" {
-					title = fmt.Sprintf("Record #%d", rec.ID)
+					title = fmt.Sprintf("记录 #%d", rec.ID)
 				}
 				rows = append(rows, ToggleRowView{
 					RecordID: rec.ID,
@@ -287,6 +297,7 @@ func RenderApp(input RenderInput) (AppView, error) {
 			blockView.Toggle = &ToggleBlockView{
 				Collection: b.Collection,
 				Field:      b.Field,
+				EditPageID: findPreferredFormPageID(input.Spec, currentPage.ID, b.Collection),
 				Rows:       rows,
 			}
 
@@ -303,11 +314,11 @@ func RenderApp(input RenderInput) (AppView, error) {
 			if label == "" {
 				switch b.Metric {
 				case "count":
-					label = "Count"
+					label = "记录总数"
 				case "sum":
-					label = "Sum"
+					label = "合计"
 				default:
-					label = "Stats"
+					label = "统计值"
 				}
 			}
 			blockView.Stats = &StatsBlockView{Label: label, Value: value}
@@ -340,6 +351,7 @@ func RenderApp(input RenderInput) (AppView, error) {
 
 		blocks = append(blocks, blockView)
 	}
+	blocks = groupConsecutiveStatsBlocks(blocks)
 
 	return AppView{
 		AppName:  strings.TrimSpace(input.Spec.AppName),
@@ -352,6 +364,38 @@ func RenderApp(input RenderInput) (AppView, error) {
 			Blocks: blocks,
 		},
 	}, nil
+}
+
+func groupConsecutiveStatsBlocks(in []BlockView) []BlockView {
+	if len(in) == 0 {
+		return nil
+	}
+
+	out := make([]BlockView, 0, len(in))
+	for i := 0; i < len(in); i++ {
+		b := in[i]
+		if b.Type != "stats" || b.Stats == nil {
+			out = append(out, b)
+			continue
+		}
+
+		groupStart := i
+		for i+1 < len(in) && in[i+1].Type == "stats" && in[i+1].Stats != nil {
+			i++
+		}
+
+		merged := in[groupStart]
+		merged.StatsCards = make([]StatsBlockView, 0, i-groupStart+1)
+		for j := groupStart; j <= i; j++ {
+			merged.StatsCards = append(merged.StatsCards, *in[j].Stats)
+		}
+		if len(merged.StatsCards) > 0 {
+			merged.Stats = &merged.StatsCards[0]
+		}
+		out = append(out, merged)
+	}
+
+	return out
 }
 
 func findPreferredFormPageID(appSpec specpkg.AppSpec, currentPageID, collectionName string) string {

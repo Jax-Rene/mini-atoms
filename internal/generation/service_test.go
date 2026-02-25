@@ -308,6 +308,159 @@ func TestServiceGenerateDraft_PreservesExistingCollectionsAndFieldsWhenLLMOmitsT
 	}
 }
 
+func TestRepairCommonLLMSpecIssues_FillsMissingCollectionForSingleCollectionBlocks(t *testing.T) {
+	t.Parallel()
+
+	in := spec.AppSpec{
+		AppName: "Todo App",
+		Collections: []spec.CollectionSpec{
+			{
+				Name: "todos",
+				Fields: []spec.FieldSpec{
+					{Name: "title", Type: spec.FieldTypeText},
+					{Name: "done", Type: spec.FieldTypeBool},
+				},
+			},
+		},
+		Pages: []spec.PageSpec{
+			{
+				ID: "dashboard",
+				Blocks: []spec.BlockSpec{
+					{Type: "list"},
+					{Type: "form"},
+					{Type: "toggle", Field: "done"},
+					{Type: "stats", Metric: "count"},
+					{Type: "timer"},
+				},
+			},
+		},
+	}
+
+	got := repairCommonLLMSpecIssues(in)
+
+	if got.Pages[0].Blocks[0].Collection != "todos" {
+		t.Fatalf("list.collection = %q, want %q", got.Pages[0].Blocks[0].Collection, "todos")
+	}
+	if got.Pages[0].Blocks[1].Collection != "todos" {
+		t.Fatalf("form.collection = %q, want %q", got.Pages[0].Blocks[1].Collection, "todos")
+	}
+	if got.Pages[0].Blocks[2].Collection != "todos" {
+		t.Fatalf("toggle.collection = %q, want %q", got.Pages[0].Blocks[2].Collection, "todos")
+	}
+	if got.Pages[0].Blocks[3].Collection != "todos" {
+		t.Fatalf("stats.collection = %q, want %q", got.Pages[0].Blocks[3].Collection, "todos")
+	}
+	if got.Pages[0].Blocks[4].Collection != "" {
+		t.Fatalf("timer.collection = %q, want empty", got.Pages[0].Blocks[4].Collection)
+	}
+}
+
+func TestRepairCommonLLMSpecIssues_DoesNotGuessWhenMultipleCollections(t *testing.T) {
+	t.Parallel()
+
+	in := spec.AppSpec{
+		AppName: "CRM",
+		Collections: []spec.CollectionSpec{
+			{
+				Name: "customers",
+				Fields: []spec.FieldSpec{
+					{Name: "name", Type: spec.FieldTypeText},
+				},
+			},
+			{
+				Name: "tasks",
+				Fields: []spec.FieldSpec{
+					{Name: "title", Type: spec.FieldTypeText},
+					{Name: "done", Type: spec.FieldTypeBool},
+				},
+			},
+		},
+		Pages: []spec.PageSpec{
+			{
+				ID: "dashboard",
+				Blocks: []spec.BlockSpec{
+					{Type: "toggle", Field: "done"},
+				},
+			},
+		},
+	}
+
+	got := repairCommonLLMSpecIssues(in)
+
+	if got.Pages[0].Blocks[0].Collection != "" {
+		t.Fatalf("toggle.collection = %q, want empty", got.Pages[0].Blocks[0].Collection)
+	}
+}
+
+func TestServiceGenerateDraft_RepairsMissingCollectionForSingleCollectionBlocks(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	db, cleanup := openGenerationTestDB(t)
+	defer cleanup()
+	project := seedProject(t, ctx, db)
+
+	invalidButRepairable := spec.AppSpec{
+		AppName: "Todo App",
+		Collections: []spec.CollectionSpec{
+			{
+				Name: "todos",
+				Fields: []spec.FieldSpec{
+					{Name: "title", Type: spec.FieldTypeText, Required: true},
+					{Name: "done", Type: spec.FieldTypeBool, Required: true},
+				},
+			},
+		},
+		Pages: []spec.PageSpec{
+			{
+				ID: "dashboard",
+				Blocks: []spec.BlockSpec{
+					{Type: "list"},
+					{Type: "form"},
+					{Type: "toggle", Field: "done"},
+					{Type: "stats", Metric: "count"},
+				},
+			},
+		},
+	}
+
+	fc := &fakeClient{
+		responses: []fakeClientResponse{
+			{content: mustSpecJSON(t, invalidButRepairable)},
+		},
+	}
+	svc := NewService(ServiceDeps{
+		Projects: store.NewProjectRepo(db),
+		Chats:    store.NewChatRepo(db),
+		Client:   fc,
+	})
+
+	result, err := svc.GenerateDraft(ctx, GenerateDraftInput{
+		UserID:     project.UserID,
+		ProjectID:  project.ID,
+		UserPrompt: "做一个待办应用",
+	})
+	if err != nil {
+		t.Fatalf("GenerateDraft() error = %v", err)
+	}
+	if fc.callCount != 1 {
+		t.Fatalf("client callCount = %d, want 1", fc.callCount)
+	}
+
+	var got spec.AppSpec
+	if err := json.Unmarshal([]byte(result.DraftSpecJSON), &got); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if len(got.Pages) != 1 || len(got.Pages[0].Blocks) != 4 {
+		t.Fatalf("unexpected pages/blocks: %#v", got.Pages)
+	}
+	for i, b := range got.Pages[0].Blocks {
+		if b.Collection != "todos" {
+			t.Fatalf("page block[%d] collection = %q, want %q", i, b.Collection, "todos")
+		}
+	}
+}
+
 type fakeClientResponse struct {
 	content string
 	err     error
