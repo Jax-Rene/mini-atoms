@@ -4,6 +4,8 @@
 
 用户用自然语言描述需求，系统生成结构化 `Spec`，并基于 `Spec` 渲染可运行应用（不是代码生成），支持多轮迭代、发布与分享。
 
+详细介绍：https://my.feishu.cn/wiki/EwsgwvMeLiTrLVkdR3WcOUGZnjf
+
 ## 功能特性
 
 - 本地账号注册 / 登录（Cookie Session）
