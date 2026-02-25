@@ -1,0 +1,516 @@
+{{ define "layout" }}
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ .Title }}</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="stylesheet" href="/static/app.css">
+  <script defer src="https://unpkg.com/alpinejs@3.14.9/dist/cdn.min.js"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script>
+    window.aiGenerateState = function () {
+      return {
+        working: false,
+        autoStarted: false,
+        stepIndex: 0,
+        stepTimer: null,
+        steps: [
+          "正在理解你的需求...",
+          "正在生成应用结构...",
+          "正在校验草稿是否合法...",
+          "正在准备预览内容..."
+        ],
+        start() {
+          this.working = true;
+          this.stepIndex = 0;
+          this.stopTimer();
+          this.stepTimer = setInterval(() => {
+            this.stepIndex = (this.stepIndex + 1) % this.steps.length;
+          }, 1200);
+        },
+        stop() {
+          this.working = false;
+          this.stepIndex = 0;
+          this.stopTimer();
+        },
+        stopOnWorkbenchSwap(event) {
+          const detail = event && event.detail ? event.detail : null;
+          const target = detail && (detail.target || detail.elt);
+          if (!target || target.id !== "project-workbench") return;
+          this.stop();
+        },
+        stopTimer() {
+          if (this.stepTimer) {
+            clearInterval(this.stepTimer);
+            this.stepTimer = null;
+          }
+        },
+        maybeAutoSubmit(formEl) {
+          if (this.autoStarted) return;
+          if (!formEl) return;
+          if ((formEl.dataset.autoGenerate || "").toLowerCase() !== "true") return;
+          this.autoStarted = true;
+          setTimeout(() => {
+            if (typeof formEl.requestSubmit === "function") {
+              formEl.requestSubmit();
+              return;
+            }
+            formEl.submit();
+          }, 0);
+        }
+      };
+    };
+
+    window.projectShareState = function (rootEl) {
+      return {
+        working: false,
+        menuOpen: false,
+        detailsOpen: false,
+        toastVisible: false,
+        toastIsError: false,
+        toastTitle: "",
+        toastLink: "",
+        toastTimer: null,
+        shareActionPath: rootEl && rootEl.dataset ? (rootEl.dataset.shareActionPath || "") : "",
+        sharePagePath: rootEl && rootEl.dataset ? (rootEl.dataset.sharePagePath || "") : "",
+        toggleMenu() {
+          this.menuOpen = !this.menuOpen;
+        },
+        closeMenu() {
+          this.menuOpen = false;
+        },
+        openDetails() {
+          this.menuOpen = false;
+          this.detailsOpen = true;
+        },
+        closeDetails() {
+          this.detailsOpen = false;
+        },
+        async share(event) {
+          if (this.working) return;
+          const form = event && event.currentTarget instanceof HTMLFormElement ? event.currentTarget : null;
+          if (!form) return;
+
+          this.working = true;
+          try {
+            const url = await this.resolveShareUrl(form);
+            const copied = await this.copyText(url);
+            this.toastIsError = false;
+            this.toastTitle = copied ? "分享链接已复制，可直接发送给对方" : "分享链接已生成，请手动复制后发送";
+            this.toastLink = url;
+            this.openToast();
+          } catch (err) {
+            this.toastIsError = true;
+            this.toastTitle = err instanceof Error ? err.message : "分享失败，请稍后重试";
+            this.toastLink = "";
+            this.openToast();
+          } finally {
+            this.working = false;
+          }
+        },
+        async resolveShareUrl(form) {
+          const cached = this.absoluteShareUrlFromPath(this.sharePagePath);
+          if (cached) return cached;
+
+          const response = await fetch(form.action || this.shareActionPath, {
+            method: "POST",
+            body: new FormData(form),
+            redirect: "follow",
+            credentials: "same-origin",
+          });
+
+          if (!response.ok) {
+            throw new Error(`分享失败（${response.status}）`);
+          }
+
+          const finalURL = response.url ? new URL(response.url, window.location.href) : null;
+          if (!finalURL || finalURL.origin !== window.location.origin || !finalURL.pathname.startsWith("/share/")) {
+            throw new Error("未获取到有效分享链接");
+          }
+
+          this.sharePagePath = `${finalURL.pathname}${finalURL.search}${finalURL.hash}`;
+          if (rootEl && rootEl.dataset) {
+            rootEl.dataset.sharePagePath = this.sharePagePath;
+          }
+          return finalURL.toString();
+        },
+        absoluteShareUrlFromPath(path) {
+          const normalized = typeof path === "string" ? path.trim() : "";
+          if (!normalized) return "";
+          return new URL(normalized, window.location.origin).toString();
+        },
+        async copyText(text) {
+          if (!text) return false;
+          try {
+            if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+              await navigator.clipboard.writeText(text);
+              return true;
+            }
+          } catch (_err) {
+          }
+
+          const input = document.createElement("textarea");
+          input.value = text;
+          input.setAttribute("readonly", "true");
+          input.style.position = "fixed";
+          input.style.top = "-9999px";
+          input.style.opacity = "0";
+          document.body.appendChild(input);
+          input.select();
+          let copied = false;
+          try {
+            copied = document.execCommand("copy");
+          } catch (_err) {
+            copied = false;
+          }
+          document.body.removeChild(input);
+          return copied;
+        },
+        openToast() {
+          this.menuOpen = false;
+          this.toastVisible = true;
+          if (this.toastTimer) {
+            clearTimeout(this.toastTimer);
+          }
+          this.toastTimer = setTimeout(() => {
+            this.toastVisible = false;
+            this.toastTimer = null;
+          }, 2600);
+        },
+      };
+    };
+
+    window.projectWorkbenchState = function (rootEl) {
+      return {
+        chatHidden: false,
+        storageKey: "",
+        init() {
+          const baseKey = rootEl && rootEl.dataset ? (rootEl.dataset.workbenchKey || "") : "";
+          this.storageKey = baseKey ? `mini-atoms:workbench:${baseKey}:chatHidden` : "";
+          if (!this.storageKey) return;
+          try {
+            this.chatHidden = window.localStorage.getItem(this.storageKey) === "1";
+          } catch (_err) {
+            this.chatHidden = false;
+          }
+        },
+        toggleChat() {
+          this.chatHidden = !this.chatHidden;
+          this.persist();
+        },
+        persist() {
+          if (!this.storageKey) return;
+          try {
+            window.localStorage.setItem(this.storageKey, this.chatHidden ? "1" : "0");
+          } catch (_err) {
+          }
+        },
+      };
+    };
+
+    window.m5TimerState = function (opts) {
+      const workMinutes = Number(opts && opts.workMinutes) > 0 ? Number(opts.workMinutes) : 25;
+      const breakMinutes = Number(opts && opts.breakMinutes) > 0 ? Number(opts.breakMinutes) : 5;
+      return {
+        workMinutes,
+        breakMinutes,
+        phase: "work",
+        running: false,
+        remainingSec: workMinutes * 60,
+        startedAtMs: null,
+        accumulatedSec: 0,
+        timerId: null,
+        init() {
+          this.resetCurrent();
+        },
+        destroy() {
+          this.stopTick();
+        },
+        phaseLabel() {
+          return this.phase === "break" ? "休息" : "专注";
+        },
+        phaseDurationSec() {
+          return (this.phase === "break" ? this.breakMinutes : this.workMinutes) * 60;
+        },
+        displayTime() {
+          const sec = Math.max(0, Math.floor(this.remainingSec));
+          const mm = String(Math.floor(sec / 60)).padStart(2, "0");
+          const ss = String(sec % 60).padStart(2, "0");
+          return `${mm}:${ss}`;
+        },
+        toggle() {
+          if (this.running) {
+            this.pause();
+          } else {
+            this.start();
+          }
+        },
+        start() {
+          if (this.running) return;
+          this.running = true;
+          this.startedAtMs = Date.now();
+          this.startTick();
+        },
+        pause() {
+          if (!this.running) return;
+          if (this.startedAtMs) {
+            this.accumulatedSec += Math.max(0, Math.round((Date.now() - this.startedAtMs) / 1000));
+          }
+          this.startedAtMs = null;
+          this.running = false;
+          this.stopTick();
+          this.syncRemaining();
+        },
+        resetCurrent() {
+          this.pause();
+          this.accumulatedSec = 0;
+          this.startedAtMs = null;
+          this.remainingSec = this.phaseDurationSec();
+        },
+        switchPhase(next) {
+          if (next !== "work" && next !== "break") return;
+          this.phase = next;
+          this.resetCurrent();
+        },
+        startTick() {
+          this.stopTick();
+          this.timerId = setInterval(() => this.syncRemaining(), 250);
+        },
+        stopTick() {
+          if (this.timerId) {
+            clearInterval(this.timerId);
+            this.timerId = null;
+          }
+        },
+        elapsedSec() {
+          let sec = this.accumulatedSec;
+          if (this.running && this.startedAtMs) {
+            sec += Math.max(0, Math.round((Date.now() - this.startedAtMs) / 1000));
+          }
+          return sec;
+        },
+        syncRemaining() {
+          const remaining = this.phaseDurationSec() - this.elapsedSec();
+          this.remainingSec = Math.max(0, remaining);
+          if (remaining <= 0 && this.running) {
+            this.pause();
+          }
+        },
+        saveMinutes() {
+          const elapsed = this.elapsedSec();
+          if (elapsed <= 0) {
+            return this.phase === "break" ? this.breakMinutes : this.workMinutes;
+          }
+          return Math.max(1, Math.round(elapsed / 60));
+        },
+        stampNow(event) {
+          const input = this.$refs && this.$refs.completedAtInput;
+          if (!input) return;
+          const now = new Date();
+          const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+          input.value = local;
+        }
+      };
+    };
+
+    (function () {
+      const PROJECTS_POPOVER_BATCH_SIZE = 8;
+      const PROJECTS_POPOVER_SCROLL_THRESHOLD = 24;
+
+      function closeProjectsPopover(popover) {
+        if (!(popover instanceof HTMLDetailsElement)) return;
+        if (!popover.open) return;
+        popover.open = false;
+      }
+
+      function syncProjectsLoadMore(list, items, statusEl, visibleCount) {
+        items.forEach((item, index) => {
+          item.hidden = index >= visibleCount;
+        });
+
+        if (!statusEl) return;
+        if (visibleCount >= items.length) {
+          statusEl.textContent = `已显示全部 ${items.length} 个项目`;
+          statusEl.classList.add("is-done");
+          return;
+        }
+        statusEl.textContent = `下滑加载更多（${visibleCount}/${items.length}）`;
+        statusEl.classList.remove("is-done");
+      }
+
+      function enhanceProjectsPanelList(list) {
+        if (!(list instanceof HTMLElement)) return;
+        if (list.dataset.loadMoreEnhanced === "true") return;
+        list.dataset.loadMoreEnhanced = "true";
+
+        const items = Array.from(list.querySelectorAll("[data-projects-panel-item]"));
+        if (!items.length) return;
+
+        const parsedChunk = Number.parseInt(list.dataset.loadmoreChunk || "", 10);
+        const chunkSize = Number.isFinite(parsedChunk) && parsedChunk > 0 ? parsedChunk : PROJECTS_POPOVER_BATCH_SIZE;
+        if (items.length <= chunkSize) return;
+
+        let visibleCount = Math.min(chunkSize, items.length);
+        const statusEl = document.createElement("div");
+        statusEl.className = "linear-projects-loadmore-hint";
+        statusEl.setAttribute("aria-live", "polite");
+        statusEl.setAttribute("aria-atomic", "true");
+        list.insertAdjacentElement("afterend", statusEl);
+
+        const maybeLoadMore = () => {
+          if (visibleCount >= items.length) return;
+          const nearBottom = list.scrollTop + list.clientHeight >= list.scrollHeight - PROJECTS_POPOVER_SCROLL_THRESHOLD;
+          if (!nearBottom) return;
+          visibleCount = Math.min(items.length, visibleCount + chunkSize);
+          syncProjectsLoadMore(list, items, statusEl, visibleCount);
+          requestAnimationFrame(maybeLoadMore);
+        };
+
+        list.addEventListener("scroll", maybeLoadMore, { passive: true });
+
+        const popover = list.closest("[data-projects-popover]");
+        if (popover instanceof HTMLDetailsElement) {
+          popover.addEventListener("toggle", () => {
+            if (!popover.open) return;
+            requestAnimationFrame(maybeLoadMore);
+          });
+        }
+
+        syncProjectsLoadMore(list, items, statusEl, visibleCount);
+      }
+
+      function initProjectsPopoverEnhancements() {
+        const popovers = Array.from(document.querySelectorAll("[data-projects-popover]"));
+        if (!popovers.length) return;
+
+        popovers.forEach((popover) => {
+          const list = popover.querySelector("[data-projects-panel-list]");
+          if (list) {
+            enhanceProjectsPanelList(list);
+          }
+        });
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        initProjectsPopoverEnhancements();
+
+        document.addEventListener("click", (event) => {
+          const target = event.target;
+          if (!(target instanceof Node)) return;
+          document.querySelectorAll("[data-projects-popover][open]").forEach((popover) => {
+            if (popover.contains(target)) return;
+            closeProjectsPopover(popover);
+          });
+        });
+
+        document.addEventListener("keydown", (event) => {
+          if (event.key !== "Escape") return;
+          document.querySelectorAll("[data-projects-popover][open]").forEach((popover) => {
+            closeProjectsPopover(popover);
+          });
+        });
+      });
+    })();
+  </script>
+</head>
+{{ $isPlainWhiteBackgroundPage := or .IsPreviewFramePage (eq .ContentTemplate "projects_content") (eq .ContentTemplate "project_detail_content") (eq .ContentTemplate "shared_project_content") (eq .ContentTemplate "published_project_content") (eq .ContentTemplate "project_workbench_content") (eq .ContentTemplate "project_detail_preview_panel") (eq .ContentTemplate "project_preview_frame_content") }}
+{{ $isFullWidthProjectPage := or (eq .ContentTemplate "project_detail_content") (eq .ContentTemplate "shared_project_content") (eq .ContentTemplate "published_project_content") (eq .ContentTemplate "project_workbench_content") }}
+<body{{ if $isPlainWhiteBackgroundPage }} class="page-projects-clean"{{ end }}>
+  <div class="min-h-screen relative {{ if .IsPreviewFramePage }}overflow-auto{{ else }}overflow-hidden{{ end }}">
+    {{ if not $isPlainWhiteBackgroundPage }}
+    <div aria-hidden="true" class="pointer-events-none absolute inset-0">
+      <div class="absolute -left-24 top-8 h-56 w-56 rounded-full bg-white/70 blur-3xl"></div>
+      <div class="absolute right-0 top-0 h-64 w-64 rounded-full bg-[rgba(212,183,120,0.18)] blur-3xl"></div>
+      <div class="absolute inset-x-0 top-28 h-px bg-gradient-to-r from-transparent via-white/70 to-transparent"></div>
+    </div>
+    {{ end }}
+
+    {{ if not .IsPreviewFramePage }}
+    <div class="sticky top-0 z-30 bg-white">
+      <div class="mx-auto flex items-center justify-between px-4 py-3 sm:px-6">
+        <div class="flex items-center gap-4">
+          {{ if .CurrentUserEmail }}
+          <nav aria-label="主导航" class="flex items-center gap-2 text-sm">
+            <details class="linear-projects-popover" data-projects-popover>
+              <summary class="linear-projects-trigger" aria-label="打开我的项目侧边栏">
+                <span class="linear-projects-trigger-icon" aria-hidden="true"></span>
+              </summary>
+
+              <aside class="linear-projects-panel" aria-label="我的项目侧边栏">
+                <div class="linear-projects-panel-head">
+                  <div>
+                    <p class="linear-kicker">Projects</p>
+                    <h2 class="linear-panel-title mt-2">我的项目</h2>
+                  </div>
+                  <span class="linear-projects-trigger-count">{{ len .Projects }}</span>
+                </div>
+
+                <div class="linear-projects-panel-note">
+                  选择一个已有项目继续编辑，或前往 Projects 页面创建新项目。
+                </div>
+
+                <div class="linear-projects-panel-list" data-projects-panel-list data-loadmore-chunk="8">
+                  {{ if .Projects }}
+                    {{ range .Projects }}
+                    <a href="/projects/{{ .Slug }}" class="linear-projects-panel-item" data-projects-panel-item>
+                      <div class="min-w-0">
+                        <p class="truncate text-sm font-medium text-slate-900">{{ .Name }}</p>
+                        <p class="linear-code mt-1 truncate text-xs text-slate-500">/{{ .Slug }}</p>
+                        <p class="mt-2 clamp-2 text-xs leading-5 text-slate-500">{{ .GoalPrompt }}</p>
+                      </div>
+                      <span class="linear-row-meta">{{ .UpdatedAtText }}</span>
+                    </a>
+                    {{ end }}
+                  {{ else }}
+                  <div class="linear-empty-inline">
+                    <p class="text-sm font-medium text-slate-800">还没有项目</p>
+                    <p class="mt-2 text-xs leading-5 text-slate-500">点击右侧工作区开始创建你的第一个项目。</p>
+                  </div>
+                  {{ end }}
+                </div>
+              </aside>
+            </details>
+          </nav>
+          {{ end }}
+
+          <div class="flex items-center gap-4">
+            <img src="/static/favicon.svg" alt="" aria-hidden="true" class="h-6 w-6 shrink-0">
+            <a href="/" class="group inline-flex flex-col text-slate-900">
+              <span class="text-base font-semibold tracking-tight">mini atoms</span>
+              <span aria-hidden="true" class="-mt-0.5 h-[3px] w-full -rotate-[1.5deg] rounded-full bg-gradient-to-r from-amber-400/70 via-orange-300/60 to-transparent transition-all duration-200 group-hover:translate-x-0.5 group-hover:scale-x-105"></span>
+              <span aria-hidden="true" class="mt-0.5 ml-1 h-px w-2/3 -rotate-[0.8deg] bg-slate-300/70"></span>
+            </a>
+          </div>
+        </div>
+        <div class="flex items-center gap-3 text-sm">
+          {{ if .CurrentUserEmail }}
+          <span class="hidden text-slate-500 sm:inline">{{ .CurrentUserEmail }}</span>
+          <form method="post" action="/logout">
+            <button type="submit" class="text-slate-700 hover:text-rose-700">退出</button>
+          </form>
+          {{ else }}
+          <a href="/login" class="text-slate-700 hover:text-slate-950">登录</a>
+          <a href="/register" class="btn-primary">注册</a>
+          {{ end }}
+        </div>
+      </div>
+    </div>
+    {{ end }}
+
+    {{ if .IsPreviewFramePage }}
+    <main>
+      {{ .RenderedContent }}
+    </main>
+    {{ else }}
+    <div class="relative px-4 py-6 sm:px-6{{ if not $isFullWidthProjectPage }} mx-auto max-w-6xl{{ end }}">
+      <main class="mt-6">
+        {{ .RenderedContent }}
+      </main>
+    </div>
+    {{ end }}
+  </div>
+</body>
+</html>
+{{ end }}

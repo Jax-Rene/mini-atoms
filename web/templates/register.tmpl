@@ -1,0 +1,28 @@
+{{ define "register_content" }}
+<section class="mx-auto max-w-md">
+  <div class="card">
+    <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Auth</p>
+    <h1 class="mt-1 text-2xl font-semibold tracking-tight text-slate-950">注册</h1>
+
+    {{ if .Error }}
+    <div class="error-box">{{ .Error }}</div>
+    {{ end }}
+
+    <form method="post" action="/register" class="mt-4">
+      <label for="email" class="label">邮箱</label>
+      <input id="email" name="email" type="email" required autocomplete="email" value="{{ .FormEmail }}" class="input">
+
+      <label for="password" class="label">密码</label>
+      <input id="password" name="password" type="password" required minlength="8" autocomplete="new-password" class="input">
+
+      <button type="submit" class="btn-primary mt-5 w-full">注册并登录</button>
+    </form>
+
+    <p class="mt-4 text-sm text-slate-600">
+      已有账号？
+      <a href="/login" class="font-medium text-slate-900 underline decoration-slate-300 underline-offset-4 hover:decoration-slate-700">去登录</a>
+    </p>
+  </div>
+</section>
+{{ end }}
+

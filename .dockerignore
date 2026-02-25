@@ -1,0 +1,9 @@
+.git
+.gitignore
+.codex
+node_modules
+output
+test-results
+data
+*.db
+*.sqlite

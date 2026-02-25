@@ -1,0 +1,101 @@
+{{ define "projects_content" }}
+<section class="linear-dashboard-shell">
+  <div class="linear-dashboard-frame">
+    <div class="linear-dashboard-main">
+      <header class="linear-hero">
+        <h1 class="linear-hero-title">Where should we <span class="linear-hero-title-accent">start?</span></h1>
+        <p class="linear-hero-subtitle">Turn ideas into products that sell</p>
+      </header>
+
+      {{ if .Error }}
+      <div class="error-box mt-4">{{ .Error }}</div>
+      {{ end }}
+
+      <form method="post" action="/projects" class="linear-compose-shell">
+        <div class="linear-compose-bar">
+          <label for="goal_prompt" class="sr-only">输入你的需求</label>
+          <textarea
+            id="goal_prompt"
+            name="goal_prompt"
+            required
+            rows="2"
+            placeholder="例如：帮我做一个简历网站，支持项目经历、作品集、导出 PDF 和深色主题预览。"
+            class="linear-compose-input linear-compose-input-framed"
+          >{{ .ProjectFormGoal }}</textarea>
+          <button type="submit" class="linear-compose-submit">Build</button>
+        </div>
+      </form>
+
+      <div>
+        <section class="linear-panel">
+          <div class="linear-panel-head">
+            <div>
+              <p class="linear-kicker">Showcase</p>
+              <h2 class="linear-panel-title mt-2">灵感入口</h2>
+            </div>
+          </div>
+
+          {{ if .ShowcaseProjects }}
+          <div class="linear-showcase-grid">
+            {{ range .ShowcaseProjects }}
+            <a href="/projects/{{ .Slug }}" class="linear-showcase-item">
+              <div class="linear-showcase-item-top">
+                <span class="linear-showcase-dot" aria-hidden="true"></span>
+                <p class="linear-showcase-title">{{ .Name }}</p>
+              </div>
+              <p class="linear-showcase-desc">{{ .GoalPrompt }}</p>
+            </a>
+            {{ end }}
+          </div>
+          {{ else }}
+          <div class="linear-showcase-grid">
+            <button type="button" class="linear-showcase-item linear-showcase-item-static">
+              <div class="linear-showcase-item-top">
+                <span class="linear-showcase-dot" aria-hidden="true"></span>
+                <p class="linear-showcase-title">简历网站生成器</p>
+              </div>
+              <p class="linear-showcase-desc">项目经历、作品集、导出 PDF、主题切换与预览。</p>
+            </button>
+            <button type="button" class="linear-showcase-item linear-showcase-item-static">
+              <div class="linear-showcase-item-top">
+                <span class="linear-showcase-dot" aria-hidden="true"></span>
+                <p class="linear-showcase-title">个人作品集 + 博客</p>
+              </div>
+              <p class="linear-showcase-desc">文章列表、标签、详情页与作品展示卡片。</p>
+            </button>
+            <button type="button" class="linear-showcase-item linear-showcase-item-static">
+              <div class="linear-showcase-item-top">
+                <span class="linear-showcase-dot" aria-hidden="true"></span>
+                <p class="linear-showcase-title">轻量 CRM 看板</p>
+              </div>
+              <p class="linear-showcase-desc">线索录入、状态跟进、统计卡片与筛选视图。</p>
+            </button>
+            <button type="button" class="linear-showcase-item linear-showcase-item-static">
+              <div class="linear-showcase-item-top">
+                <span class="linear-showcase-dot" aria-hidden="true"></span>
+                <p class="linear-showcase-title">待办 + 统计面板</p>
+              </div>
+              <p class="linear-showcase-desc">表单、列表、状态切换、完成率与分类管理。</p>
+            </button>
+            <button type="button" class="linear-showcase-item linear-showcase-item-static">
+              <div class="linear-showcase-item-top">
+                <span class="linear-showcase-dot" aria-hidden="true"></span>
+                <p class="linear-showcase-title">课程报名表单系统</p>
+              </div>
+              <p class="linear-showcase-desc">报名信息收集、校验、名单列表与导出视图。</p>
+            </button>
+            <button type="button" class="linear-showcase-item linear-showcase-item-static">
+              <div class="linear-showcase-item-top">
+                <span class="linear-showcase-dot" aria-hidden="true"></span>
+                <p class="linear-showcase-title">活动落地页 + 收集线索</p>
+              </div>
+              <p class="linear-showcase-desc">活动介绍、报名表单、转化统计与状态管理。</p>
+            </button>
+          </div>
+          {{ end }}
+        </section>
+      </div>
+    </div>
+  </div>
+</section>
+{{ end }}

@@ -1,0 +1,810 @@
+{{ define "project_detail_content" }}
+<section
+  class="surface-marble project-hardline-hero p-4 sm:p-5"
+>
+  <div class="project-meta-list project-detail-meta-strip">
+    <span>项目详情</span>
+    {{ if .CurrentProject.Slug }}
+    <span><span class="project-meta-code">/projects/{{ .CurrentProject.Slug }}</span></span>
+    {{ end }}
+    {{ if .CurrentUserEmail }}<span>创建人 {{ .CurrentUserEmail }}</span>{{ end }}
+    <span>创建于 {{ .CurrentProject.CreatedAtText }}</span>
+    <span>更新于 {{ .CurrentProject.UpdatedAtText }}</span>
+    {{ if .CurrentProject.PublishedSlug }}<span>已发布 /p/{{ .CurrentProject.PublishedSlug }}</span>{{ end }}
+  </div>
+</section>
+
+{{ template "project_workbench_content" . }}
+{{ end }}
+
+{{ define "shared_project_content" }}
+<section class="surface-marble project-hardline-hero project-detail-hero-stage relative overflow-hidden p-6 sm:p-8">
+  <div class="relative flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+    <div class="max-w-4xl">
+      <p class="kicker">分享页面</p>
+      <h1 class="project-hero-title mt-3">{{ .CurrentProject.Name }}</h1>
+      <div class="project-meta-list mt-4">
+        {{ if .CurrentProject.PublishedAtText }}<span>最近发布 {{ .CurrentProject.PublishedAtText }}</span>{{ end }}
+      </div>
+      <div class="project-hero-lead-shell mt-5">
+        <p class="project-hero-lead">{{ .CurrentProject.GoalPrompt }}</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section
+  id="project-workbench"
+  class="project-hardline-workbench project-detail-workbench-stage mt-6 grid gap-6 xl:items-stretch xl:grid-cols-[520px_minmax(0,1fr)]"
+  x-data="projectWorkbenchState($el)"
+  x-init="init()"
+  x-bind:class="chatHidden ? 'project-workbench-chat-hidden' : ''"
+  data-workbench-key="share:{{ .CurrentProject.Slug }}"
+>
+  {{ template "project_chat_readonly_panel" . }}
+  {{ template "project_detail_preview_embed_panel" . }}
+</section>
+{{ end }}
+
+{{ define "published_project_content" }}
+<section class="surface-marble project-hardline-hero project-detail-hero-stage relative overflow-hidden p-6 sm:p-8">
+  <div class="relative flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+    <div class="max-w-4xl">
+      <p class="kicker">已发布应用</p>
+      <h1 class="project-hero-title mt-3">{{ .CurrentProject.Name }}</h1>
+      <div class="project-meta-list mt-4">
+        {{ if .CurrentProject.PublishedSlug }}<span class="project-meta-code">/p/{{ .CurrentProject.PublishedSlug }}</span>{{ end }}
+        <span>公开页面</span>
+        {{ if .CurrentProject.PublishedAtText }}<span>发布于 {{ .CurrentProject.PublishedAtText }}</span>{{ end }}
+      </div>
+      <div class="project-hero-lead-shell mt-5">
+        <p class="project-hero-lead">{{ .CurrentProject.GoalPrompt }}</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="mt-6">
+  {{ template "project_detail_preview_embed_panel" . }}
+</section>
+{{ end }}
+
+{{ define "project_workbench_content" }}
+<section
+  id="project-workbench"
+  class="project-hardline-workbench project-detail-workbench-stage mt-4 grid gap-6 xl:items-stretch xl:grid-cols-[520px_minmax(0,1fr)]"
+  x-data="projectWorkbenchState($el)"
+  x-init="init()"
+  x-bind:class="chatHidden ? 'project-workbench-chat-hidden' : ''"
+  data-workbench-key="editor:{{ .CurrentProject.Slug }}"
+>
+  {{ template "project_detail_chat_panel" . }}
+  {{ template "project_detail_preview_embed_panel" . }}
+</section>
+{{ end }}
+
+{{ define "project_detail_chat_panel" }}
+<div class="ghost-panel project-chat-panel-shell project-chat-panel-heavy project-hardline-panel p-5 sm:p-6" x-show="!chatHidden" x-transition.opacity.duration.150ms>
+  <div class="flex items-center justify-between gap-3">
+    <div>
+      <p class="kicker">聊天区</p>
+    </div>
+    <div class="flex items-center gap-2">
+      {{ if not .IsPublishedPage }}
+      <button
+        type="button"
+        class="btn-secondary project-workbench-toggle-btn project-workbench-toggle-icon-btn"
+        x-on:click="toggleChat()"
+        aria-label="隐藏对话区"
+        title="隐藏对话区"
+      >
+        <span class="sr-only">隐藏对话区</span>
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="m12 6-4 4 4 4"></path>
+        </svg>
+      </button>
+      {{ end }}
+      <span class="project-chip project-chip-soft">{{ len .ChatMessages }} 条消息</span>
+    </div>
+  </div>
+
+  <div class="project-chat-layout mt-5">
+    <div class="ghost-subpanel project-chat-thread-panel project-chat-thread-stage">
+      <div class="flex items-center justify-between gap-3">
+        <p class="text-sm font-medium text-slate-900">对话消息</p>
+        <p class="text-xs text-slate-500">{{ len .ChatMessages }} 条</p>
+      </div>
+
+      <div class="project-chat-thread-body mt-3">
+        {{ if .ChatMessages }}
+        <div class="project-chat-stream space-y-3">
+          {{ range .ChatMessages }}
+          <div class="im-message-row {{ if eq .RoleClass "chat-role-user" }}is-user{{ else if eq .RoleClass "chat-role-assistant" }}is-ai{{ else }}is-system{{ end }}">
+            <div class="im-avatar {{ if eq .RoleClass "chat-role-user" }}is-user{{ else if eq .RoleClass "chat-role-assistant" }}is-ai{{ else }}is-system{{ end }}" aria-hidden="true">
+              {{ if eq .RoleClass "chat-role-user" }}我{{ else if eq .RoleClass "chat-role-assistant" }}AI{{ else }}S{{ end }}
+            </div>
+
+            <div class="im-message-body">
+              <div class="im-message-meta">
+                <span class="chat-role-badge {{ .RoleClass }}">{{ .RoleLabel }}</span>
+                <span class="text-[11px] text-slate-400">{{ .CreatedAtText }}</span>
+              </div>
+              <div class="im-bubble {{ if eq .RoleClass "chat-role-user" }}is-user{{ else if eq .RoleClass "chat-role-assistant" }}is-ai{{ else }}is-system{{ end }}">
+                <p class="whitespace-pre-wrap text-sm leading-6 text-slate-700">{{ .Content }}</p>
+              </div>
+            </div>
+          </div>
+          {{ end }}
+        </div>
+        {{ else }}
+        <div class="project-chat-empty">
+          <p class="text-sm font-medium text-slate-800">还没有对话消息</p>
+          <p class="mt-2 text-sm leading-6 text-slate-600">{{ if .ShowChatComposer }}提交下面的需求后，这里会出现一来一回的生成记录。{{ else }}当前页面处于只读模式。{{ end }}</p>
+        </div>
+        {{ end }}
+      </div>
+
+      {{ if .ShowChatComposer }}
+      <div class="project-chat-composer-footer">
+        {{ if .ProjectDetailError }}
+        <div class="error-box">{{ .ProjectDetailError }}</div>
+        {{ end }}
+
+      <form
+        method="post"
+        action="/projects/{{ .CurrentProject.Slug }}/generate"
+        class="mt-3"
+        data-auto-generate="{{ if .AutoGenerateOnLoad }}true{{ else }}false{{ end }}"
+        hx-post="/projects/{{ .CurrentProject.Slug }}/generate"
+        hx-target="#project-workbench"
+        hx-swap="outerHTML"
+        hx-sync="this:replace"
+        x-data="aiGenerateState()"
+        x-init="maybeAutoSubmit($el)"
+        x-on:htmx:before-request="start()"
+        x-on:htmx:after-request="stop()"
+        x-on:htmx:before-swap.window="stopOnWorkbenchSwap($event)"
+        x-on:htmx:response-error="stop()"
+        x-on:htmx:send-error="stop()"
+      >
+        <input type="hidden" name="page_id" value="{{ .PreviewPageID }}">
+
+        <template x-if="working">
+          <div
+            id="ai-generate-indicator"
+            class="ai-generate-indicator"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            <div class="flex items-start gap-3">
+              <div class="ai-generate-orb" aria-hidden="true">
+                <div class="ai-generate-orb-ring"></div>
+                <div class="ai-generate-spinner"></div>
+              </div>
+              <div class="min-w-0">
+                <p class="text-sm font-semibold text-slate-900">AI 正在生成...</p>
+                <p class="mt-1 text-xs leading-5 text-slate-500" x-text="steps[stepIndex]">正在理解你的需求...</p>
+              </div>
+              <div class="ai-generate-dots ml-auto mt-0.5" aria-hidden="true">
+                <span class="ai-generate-dot"></span>
+                <span class="ai-generate-dot"></span>
+                <span class="ai-generate-dot"></span>
+              </div>
+            </div>
+            <div class="ai-generate-progress mt-3" aria-hidden="true">
+              <div class="ai-generate-progress-bar"></div>
+            </div>
+            <div class="mt-3 grid gap-2">
+              <div class="ai-generate-line ai-generate-line-1"></div>
+              <div class="ai-generate-line ai-generate-line-2"></div>
+              <div class="ai-generate-line ai-generate-line-3"></div>
+            </div>
+          </div>
+        </template>
+
+        <label for="project_prompt" class="sr-only">本轮需求</label>
+        <textarea
+          id="project_prompt"
+          name="prompt"
+          rows="5"
+          required
+          x-bind:disabled="working"
+          placeholder="例如：增加优先级字段，并在列表里显示已完成数量统计。"
+          class="input project-chat-composer-input mt-0 min-h-[140px] resize-y"
+        >{{ .GenerateFormPrompt }}</textarea>
+
+        <div class="mt-3 flex items-center justify-between gap-3">
+          <p class="text-xs leading-5 text-slate-500">Power by: {{ .GenerationProviderName }}</p>
+          <button type="submit" class="btn-primary" x-bind:disabled="working">
+            <span class="inline-flex items-center gap-2" x-show="!working">
+              <span>发送</span>
+            </span>
+            <span class="inline-flex items-center gap-2" x-show="working" x-cloak>
+              <span class="btn-loading-spinner" aria-hidden="true"></span>
+              <span>生成中...</span>
+            </span>
+          </button>
+        </div>
+      </form>
+      </div>
+      {{ end }}
+    </div>
+  </div>
+</div>
+{{ end }}
+
+{{ define "project_chat_readonly_panel" }}
+{{ $copy := . }}
+{{ template "project_detail_chat_panel" $copy }}
+{{ end }}
+
+{{ define "project_detail_preview_embed_panel" }}
+<div
+  class="relative surface-mist project-preview-review-shell project-hardline-panel p-5 sm:p-6"
+  x-data="projectShareState($el)"
+  data-share-action-path="{{ .ShareActionPath }}"
+  data-share-page-path="{{ .SharePagePath }}"
+>
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <p class="kicker">App Review</p>
+    </div>
+    <div class="flex flex-wrap items-center justify-end gap-2">
+      {{ if not .IsPublishedPage }}
+      <button
+        type="button"
+        class="btn-secondary project-workbench-toggle-btn project-workbench-toggle-icon-btn"
+        x-cloak
+        x-show="chatHidden"
+        x-transition.opacity.duration.150ms
+        x-on:click="toggleChat()"
+        x-bind:aria-pressed="chatHidden ? 'true' : 'false'"
+        aria-label="显示对话区"
+        title="显示对话区"
+      >
+        <span class="sr-only">显示对话区</span>
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="m8 6 4 4-4 4"></path>
+        </svg>
+      </button>
+      {{ end }}
+      <span class="project-chip project-chip-soft">{{ if eq .PreviewMode "share_readonly" }}只读分享{{ else }}可编辑模式{{ end }}</span>
+      <div class="relative" x-on:keydown.escape.window="closeMenu(); closeDetails()">
+        <button
+          type="button"
+          class="btn-secondary project-workbench-toggle-btn project-workbench-toggle-icon-btn"
+          x-on:click="toggleMenu()"
+          x-bind:aria-expanded="menuOpen ? 'true' : 'false'"
+          aria-haspopup="dialog"
+          aria-label="更多操作"
+          title="更多操作"
+        >
+          <span class="sr-only">更多操作</span>
+          <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <circle cx="10" cy="4.5" r="1.2"></circle>
+            <circle cx="10" cy="10" r="1.2"></circle>
+            <circle cx="10" cy="15.5" r="1.2"></circle>
+          </svg>
+        </button>
+
+        <div
+          x-cloak
+          x-show="menuOpen"
+          x-transition.origin.top.right.duration.150ms
+          x-on:click.outside="closeMenu()"
+          class="absolute right-0 top-full z-30 mt-2 w-80 max-w-[calc(100vw-3rem)] rounded-2xl border border-slate-300 bg-white p-3 shadow-inner-soft"
+          role="dialog"
+          aria-label="更多操作"
+        >
+          <button type="button" class="btn-secondary w-full justify-between" x-on:click="openDetails()">
+            <span>详细数据</span>
+            <span aria-hidden="true">↗</span>
+          </button>
+
+          {{ if .ShowProjectActions }}
+          <div class="mt-3 rounded-xl border border-slate-300 bg-slate-50 p-3">
+            <p class="text-xs font-medium text-slate-500">当前状态</p>
+            <p class="mt-2 text-sm leading-6 text-slate-700">
+              {{ if .CurrentProject.PublishedSlug }}已发布到 <a class="font-medium text-slate-900 underline underline-offset-2" href="{{ .PublishedPagePath }}">/p/{{ .CurrentProject.PublishedSlug }}</a>{{ else }}尚未发布，当前为草稿状态。{{ end }}
+            </p>
+          </div>
+          <div class="mt-3 grid gap-2">
+            <form method="post" action="{{ .PublishActionPath }}" x-on:submit="closeMenu()">
+              <input type="hidden" name="page_id" value="{{ .PreviewPageID }}">
+              <button type="submit" class="btn-primary w-full">发布</button>
+            </form>
+            <form method="post" action="{{ .ShareActionPath }}" x-on:submit.prevent="share($event)">
+              <input type="hidden" name="page_id" value="{{ .PreviewPageID }}">
+              <button type="submit" class="btn-secondary w-full" x-bind:disabled="working">
+                <span x-show="!working">分享</span>
+                <span x-show="working" x-cloak>生成中...</span>
+              </button>
+            </form>
+          </div>
+          {{ end }}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div
+    x-cloak
+    x-show="detailsOpen"
+    x-transition.opacity.duration.150ms
+    class="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/35 px-4 py-6"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="project-preview-details-title"
+    x-on:click="closeDetails()"
+  >
+    <div
+      class="w-full max-w-3xl rounded-[1.35rem] border border-white/70 bg-white p-5 shadow-inner-soft sm:p-6"
+      x-transition.scale.opacity.duration.150ms
+      x-on:click.stop
+    >
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p class="kicker">详细数据</p>
+          <h3 id="project-preview-details-title" class="mt-2 text-xl font-semibold tracking-tight text-slate-900">预览区概览与统计</h3>
+          <p class="mt-2 text-sm leading-6 text-slate-600">App Review 主区域已精简为“应用预览画布”，预览模式、页面与区块统计统一在这里查看。</p>
+        </div>
+        <button type="button" class="btn-secondary" x-on:click="closeDetails()">关闭</button>
+      </div>
+
+      <div class="mt-4 rounded-2xl border border-slate-300 bg-slate-50 p-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p class="text-sm font-semibold text-slate-900">预览区</p>
+            <p class="mt-2 text-sm leading-6 text-slate-600">用于查看当前草稿渲染结果与交互状态；主区域仅保留应用预览画布。</p>
+          </div>
+          <span class="project-chip project-chip-soft">{{ if eq .PreviewMode "share_readonly" }}只读分享{{ else }}可编辑模式{{ end }}</span>
+        </div>
+        {{ if .PreviewError }}
+        <div class="error-box mt-4">{{ .PreviewError }}</div>
+        {{ end }}
+      </div>
+
+      <div class="preview-insight-grid mt-4">
+        <div class="preview-insight-card">
+          <p class="preview-insight-label">预览模式</p>
+          <p class="preview-insight-value">{{ if eq .PreviewMode "share_readonly" }}只读{{ else }}可编辑{{ end }}</p>
+          <p class="preview-insight-meta">{{ if eq .PreviewMode "share_readonly" }}分享态 / 写操作拦截{{ else }}项目态 / 可交互验证{{ end }}</p>
+        </div>
+        <div class="preview-insight-card">
+          <p class="preview-insight-label">页面数</p>
+          <p class="preview-insight-value">{{ if .PreviewApp }}{{ len .PreviewApp.Pages }}{{ else }}0{{ end }}</p>
+          <p class="preview-insight-meta">当前可预览页面</p>
+        </div>
+        <div class="preview-insight-card">
+          <p class="preview-insight-label">当前页面</p>
+          <p class="preview-insight-value-sm">{{ if .PreviewApp }}{{ if .PreviewApp.CurrentPage.Title }}{{ .PreviewApp.CurrentPage.Title }}{{ else }}待生成{{ end }}{{ else }}待生成{{ end }}</p>
+          <p class="preview-insight-meta">{{ if .PreviewApp }}可切换页面预览{{ else }}生成后自动渲染{{ end }}</p>
+        </div>
+        <div class="preview-insight-card">
+          <p class="preview-insight-label">区块数</p>
+          <p class="preview-insight-value">{{ if .PreviewApp }}{{ len .PreviewApp.CurrentPage.Blocks }}{{ else }}0{{ end }}</p>
+          <p class="preview-insight-meta">{{ if .CurrentProject.PublishedSlug }}已发布版本可对照{{ else }}草稿版本待确认{{ end }}</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="project-preview-frame-host mt-5 overflow-hidden rounded-[1.35rem] border border-white/70 bg-white shadow-inner-soft">
+    <div class="project-preview-frame-chrome" aria-hidden="true">
+      <div class="project-preview-frame-dots">
+        <span class="project-preview-frame-dot is-red"></span>
+        <span class="project-preview-frame-dot is-amber"></span>
+        <span class="project-preview-frame-dot is-green"></span>
+      </div>
+      <div class="project-preview-frame-label">App Preview</div>
+      <div class="project-preview-frame-pill">{{ if eq .PreviewMode "share_readonly" }}Read-only{{ else }}Editable{{ end }}</div>
+    </div>
+    <iframe
+      title="项目预览器"
+      src="{{ .PreviewFramePath }}{{ if .PreviewPageID }}?page={{ .PreviewPageID }}{{ if .PreviewEditCollection }}&edit_collection={{ .PreviewEditCollection }}{{ end }}{{ if gt .PreviewEditRecordID 0 }}&edit_record={{ .PreviewEditRecordID }}{{ end }}{{ else }}{{ if .PreviewEditCollection }}?edit_collection={{ .PreviewEditCollection }}{{ if gt .PreviewEditRecordID 0 }}&edit_record={{ .PreviewEditRecordID }}{{ end }}{{ else if gt .PreviewEditRecordID 0 }}?edit_record={{ .PreviewEditRecordID }}{{ end }}{{ end }}"
+      class="project-preview-iframe block w-full bg-white"
+      loading="lazy"
+      referrerpolicy="same-origin"
+    ></iframe>
+  </div>
+
+  <div
+    x-cloak
+    x-show="toastVisible"
+    x-transition.opacity.duration.150ms
+    class="project-share-toast"
+    role="status"
+    aria-live="polite"
+    aria-atomic="true"
+    x-bind:class="toastIsError ? 'is-error' : ''"
+  >
+    <p class="project-share-toast-title" x-text="toastTitle"></p>
+    <p class="project-share-toast-link" x-text="toastLink"></p>
+  </div>
+</div>
+{{ end }}
+
+{{ define "project_preview_frame_content" }}
+<div class="project-preview-frame-shell project-hardline-workbench min-h-screen p-3 sm:p-4">
+  {{ template "project_detail_preview_panel" . }}
+</div>
+{{ end }}
+
+{{ define "project_detail_preview_panel" }}
+<div id="project-preview-panel" class="project-preview-flat-scope surface-mist project-hardline-panel p-5 sm:p-6">
+  <div class="marble-stage p-5 sm:p-6">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <p class="text-sm font-semibold text-slate-900">应用预览画布</p>
+        <p class="mt-2 text-sm leading-6 text-slate-600">基于当前草稿配置渲染表单、列表、开关与统计组件，并支持在预览器内直接交互。</p>
+      </div>
+    </div>
+
+    {{ if .PreviewError }}
+    <div class="error-box mt-4">{{ .PreviewError }}</div>
+    {{ end }}
+
+    {{ if .PreviewApp }}
+    <div class="mt-5 space-y-4">
+      {{ if gt (len .PreviewApp.Pages) 1 }}
+      <div class="m5-page-tabs">
+        {{ range .PreviewApp.Pages }}
+        <a
+          href="{{ $.PreviewPageBasePath }}?page={{ .ID }}"
+          class="m5-page-tab {{ if .Active }}is-active{{ end }}"
+          {{ if $.PreviewPanelPath }}
+          hx-get="{{ $.PreviewPanelPath }}?page={{ .ID }}"
+          hx-target="#project-preview-panel"
+          hx-swap="outerHTML"
+          hx-push-url="false"
+          {{ end }}
+        >{{ .Title }}</a>
+        {{ end }}
+      </div>
+      {{ else if .PreviewApp.CurrentPage.Title }}
+      <div class="rounded-2xl bg-white/60 px-4 py-3 text-sm font-medium text-slate-700 shadow-inner-soft">
+        页面：{{ .PreviewApp.CurrentPage.Title }}
+      </div>
+      {{ end }}
+
+      <div class="grid gap-4">
+        {{ range .PreviewApp.CurrentPage.Blocks }}
+          {{ template "m5_preview_block" (dict "Root" $ "Block" .) }}
+        {{ end }}
+      </div>
+    </div>
+    {{ else }}
+    <div class="empty-preview-shell mt-5">
+      <p class="text-sm font-medium text-slate-800">还没有可预览内容</p>
+      <p class="mt-2 text-sm leading-6 text-slate-600">
+        {{ if .ShowChatComposer }}在左侧继续补充需求并点击“生成草稿”，这里会展示真实应用界面（表单、列表、切换状态、统计卡片）。{{ else if .IsSharePage }}分享内容生成后，这里会展示真实应用界面（表单、列表、切换状态、统计卡片）。{{ else if .IsPublishedPage }}发布内容生成后，这里会展示真实应用界面（表单、列表、切换状态、统计卡片）。{{ else }}生成后这里会展示真实应用界面（表单、列表、切换状态、统计卡片）。{{ end }}
+      </p>
+      <div class="mt-3 flex flex-wrap gap-2">
+        <span class="prompt-hint-chip">增加状态筛选</span>
+        <span class="prompt-hint-chip">显示完成率统计</span>
+        <span class="prompt-hint-chip">支持编辑与删除</span>
+      </div>
+    </div>
+    {{ end }}
+  </div>
+
+</div>
+{{ end }}
+
+{{ define "m5_preview_block" }}
+{{ $root := .Root }}
+{{ $block := .Block }}
+
+{{ if eq $block.Type "nav" }}
+<section class="ghost-subpanel !border-0">
+  <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Nav</p>
+  <div class="mt-3 flex flex-wrap gap-2">
+    {{ range $block.Nav.Items }}
+    <a
+      href="{{ $root.PreviewPageBasePath }}?page={{ .PageID }}"
+      class="m5-page-tab {{ if .Active }}is-active{{ end }}"
+      {{ if $root.PreviewPanelPath }}
+      hx-get="{{ $root.PreviewPanelPath }}?page={{ .PageID }}"
+      hx-target="#project-preview-panel"
+      hx-swap="outerHTML"
+      hx-push-url="false"
+      {{ end }}
+    >{{ .Label }}</a>
+    {{ end }}
+  </div>
+</section>
+{{ end }}
+
+{{ if eq $block.Type "stats" }}
+<section class="ghost-subpanel !border-0">
+  <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Stats</p>
+  <div class="mt-3 grid gap-3 sm:grid-cols-2">
+    <div class="m5-stat-card">
+      <p class="text-xs font-medium text-slate-500">{{ $block.Stats.Label }}</p>
+      <p class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{{ $block.Stats.Value }}</p>
+    </div>
+  </div>
+</section>
+{{ end }}
+
+{{ if eq $block.Type "timer" }}
+<section class="ghost-subpanel !border-0" x-data="m5TimerState({ workMinutes: {{ $block.Timer.WorkMinutes }}, breakMinutes: {{ $block.Timer.BreakMinutes }} })">
+  <div class="flex items-center justify-between gap-3">
+    <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Timer{{ if $block.Timer.SessionCollection }} · {{ $block.Timer.SessionCollection }}{{ end }}</p>
+    <div class="flex items-center gap-2">
+      <span class="project-chip">{{ $block.Timer.WorkMinutes }}/{{ $block.Timer.BreakMinutes }}</span>
+      {{ if $root.PreviewApp.ReadOnly }}<span class="text-xs text-slate-400">只读</span>{{ end }}
+    </div>
+  </div>
+
+  <div class="mt-3 m5-timer-shell">
+    <div class="flex items-center justify-between gap-3">
+      <div>
+        <p class="text-xs text-slate-500">当前阶段</p>
+        <p class="mt-1 text-sm font-medium text-slate-800" x-text="phaseLabel()"></p>
+      </div>
+      <div class="m5-timer-display" x-text="displayTime()"></div>
+    </div>
+
+    <div class="mt-4 flex flex-wrap gap-2">
+      <button type="button" class="btn-primary" x-on:click="toggle()" {{ if $root.PreviewApp.ReadOnly }}disabled{{ end }}>
+        <span x-text="running ? '暂停' : '开始'"></span>
+      </button>
+      <button type="button" class="btn-secondary" x-on:click="resetCurrent()" {{ if $root.PreviewApp.ReadOnly }}disabled{{ end }}>重置</button>
+      <button type="button" class="btn-secondary" x-on:click="switchPhase('work')" {{ if $root.PreviewApp.ReadOnly }}disabled{{ end }}>工作</button>
+      <button type="button" class="btn-secondary" x-on:click="switchPhase('break')" {{ if $root.PreviewApp.ReadOnly }}disabled{{ end }}>休息</button>
+    </div>
+
+    <p class="mt-3 text-xs leading-5 text-slate-500">计时在前端运行；点击保存后会写入一条专注记录。</p>
+  </div>
+
+  {{ if $block.Timer.CanSaveSession }}
+  <form
+    method="post"
+    action="{{ $root.PreviewActionBasePath }}/records/{{ $block.Timer.SessionCollection }}"
+    class="mt-4 grid gap-3"
+    x-on:submit="stampNow($event)"
+    {{ if not $root.PreviewApp.ReadOnly }}
+    hx-post="{{ $root.PreviewActionBasePath }}/records/{{ $block.Timer.SessionCollection }}"
+    hx-target="#project-preview-panel"
+    hx-swap="outerHTML"
+    hx-sync="this:replace"
+    {{ end }}
+  >
+    <input type="hidden" name="page_id" value="{{ $root.PreviewPageID }}">
+    <input type="hidden" name="preview_mode" value="{{ $root.PreviewMode }}">
+    <input type="hidden" name="edit_collection" value="{{ $root.PreviewEditCollection }}">
+    <input type="hidden" name="edit_record" value="{{ $root.PreviewEditRecordID }}">
+
+    {{ if $block.Timer.TaskField }}
+    <div>
+      <label class="text-xs font-medium text-slate-600" for="m5-timer-task-{{ $block.Timer.TaskField }}">任务</label>
+      <input id="m5-timer-task-{{ $block.Timer.TaskField }}" name="{{ $block.Timer.TaskField }}" type="text" class="input mt-1" placeholder="例如：深度阅读 / 写作 / 编码" {{ if $root.PreviewApp.ReadOnly }}disabled{{ end }}>
+    </div>
+    {{ end }}
+
+    <div class="grid gap-3 sm:grid-cols-2">
+      {{ if $block.Timer.MinutesField }}
+      <div>
+        <label class="text-xs font-medium text-slate-600" for="m5-timer-minutes-{{ $block.Timer.MinutesField }}">分钟数</label>
+        <input id="m5-timer-minutes-{{ $block.Timer.MinutesField }}" name="{{ $block.Timer.MinutesField }}" type="number" min="1" step="1" class="input mt-1" x-bind:value="saveMinutes()" {{ if $root.PreviewApp.ReadOnly }}disabled{{ end }}>
+      </div>
+      {{ end }}
+      {{ if $block.Timer.CompletedAtField }}
+      <div>
+        <label class="text-xs font-medium text-slate-600" for="m5-timer-completed-at-{{ $block.Timer.CompletedAtField }}">完成时间</label>
+        <input id="m5-timer-completed-at-{{ $block.Timer.CompletedAtField }}" name="{{ $block.Timer.CompletedAtField }}" type="datetime-local" class="input mt-1" x-ref="completedAtInput" {{ if $root.PreviewApp.ReadOnly }}disabled{{ end }}>
+      </div>
+      {{ end }}
+    </div>
+
+    <div class="flex justify-end">
+      <button type="submit" class="btn-primary" {{ if $root.PreviewApp.ReadOnly }}disabled{{ end }}>保存本次专注记录</button>
+    </div>
+  </form>
+  {{ else }}
+  <p class="mt-4 text-sm leading-6 text-slate-500">Timer 已渲染，但无法自动识别记录字段（需要数值分钟字段）。</p>
+  {{ end }}
+</section>
+{{ end }}
+
+{{ if eq $block.Type "form" }}
+<section class="ghost-subpanel !border-0">
+  {{ $isEditing := and (eq $root.PreviewEditCollection $block.Form.Collection) (gt $root.PreviewEditRecordID 0) }}
+  <div class="flex items-center justify-between gap-3">
+    <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Form · {{ $block.Form.Collection }}</p>
+    <div class="flex items-center gap-2">
+      {{ if $isEditing }}<span class="text-xs text-slate-500">编辑 #{{ $root.PreviewEditRecordID }}</span>{{ end }}
+      {{ if $root.PreviewApp.ReadOnly }}<span class="text-xs text-slate-400">只读</span>{{ end }}
+    </div>
+  </div>
+  <form
+    method="post"
+    action="{{ $root.PreviewActionBasePath }}/records/{{ $block.Form.Collection }}{{ if $isEditing }}/{{ $root.PreviewEditRecordID }}{{ end }}"
+    class="mt-3 grid gap-3"
+    {{ if not $root.PreviewApp.ReadOnly }}
+    hx-post="{{ $root.PreviewActionBasePath }}/records/{{ $block.Form.Collection }}{{ if $isEditing }}/{{ $root.PreviewEditRecordID }}{{ end }}"
+    hx-target="#project-preview-panel"
+    hx-swap="outerHTML"
+    hx-sync="this:replace"
+    {{ end }}
+  >
+    <input type="hidden" name="page_id" value="{{ $root.PreviewPageID }}">
+    <input type="hidden" name="preview_mode" value="{{ $root.PreviewMode }}">
+    <input type="hidden" name="edit_collection" value="{{ $root.PreviewEditCollection }}">
+    <input type="hidden" name="edit_record" value="{{ $root.PreviewEditRecordID }}">
+
+    {{ range $block.Form.Fields }}
+    {{ $fieldValue := "" }}
+    {{ if and $isEditing $root.PreviewEditValues }}
+      {{ $fieldValue = index $root.PreviewEditValues .Name }}
+    {{ end }}
+    <div>
+      <label class="text-xs font-medium text-slate-600" for="m5-form-{{ .Name }}">{{ .Label }}</label>
+
+      {{ if eq .Type "enum" }}
+      <select id="m5-form-{{ .Name }}" name="{{ .Name }}" class="input mt-1" {{ if .Required }}required{{ end }} {{ if $root.PreviewApp.ReadOnly }}disabled{{ end }}>
+        <option value="">请选择</option>
+        {{ range .Options }}
+        <option value="{{ . }}" {{ if eq . $fieldValue }}selected{{ end }}>{{ . }}</option>
+        {{ end }}
+      </select>
+      {{ else if eq .Type "bool" }}
+      <div class="mt-2 flex items-center gap-2 rounded-2xl bg-white/80 px-3 py-2 shadow-inner-soft">
+        <input type="hidden" name="{{ .Name }}" value="0">
+        <input id="m5-form-{{ .Name }}" type="checkbox" name="{{ .Name }}" value="1" class="h-4 w-4 rounded border-slate-300 text-slate-900" {{ if isTruthy $fieldValue }}checked{{ end }} {{ if $root.PreviewApp.ReadOnly }}disabled{{ end }}>
+        <label for="m5-form-{{ .Name }}" class="text-sm text-slate-700">勾选为 true</label>
+      </div>
+      {{ else }}
+      <input
+        id="m5-form-{{ .Name }}"
+        name="{{ .Name }}"
+        type="{{ .InputType }}"
+        class="input mt-1"
+        value="{{ $fieldValue }}"
+        {{ if .Step }}step="{{ .Step }}"{{ end }}
+        {{ if .Required }}required{{ end }}
+        {{ if $root.PreviewApp.ReadOnly }}disabled{{ end }}
+      >
+      {{ end }}
+    </div>
+    {{ end }}
+
+    <div class="flex items-center justify-between gap-3">
+      <div>
+        {{ if $isEditing }}
+        <a
+          href="{{ $root.PreviewPageBasePath }}{{ if $root.PreviewPageID }}?page={{ $root.PreviewPageID }}{{ end }}"
+          class="text-xs text-slate-500 hover:text-slate-800"
+          {{ if $root.PreviewPanelPath }}
+          hx-get="{{ $root.PreviewPanelPath }}{{ if $root.PreviewPageID }}?page={{ $root.PreviewPageID }}{{ end }}"
+          hx-target="#project-preview-panel"
+          hx-swap="outerHTML"
+          hx-push-url="false"
+          {{ end }}
+        >取消编辑</a>
+        {{ end }}
+      </div>
+      <button type="submit" class="btn-primary" {{ if $root.PreviewApp.ReadOnly }}disabled{{ end }}>{{ if $isEditing }}保存修改{{ else }}新增记录{{ end }}</button>
+    </div>
+  </form>
+</section>
+{{ end }}
+
+{{ if eq $block.Type "list" }}
+<section class="ghost-subpanel !border-0">
+  <div class="flex items-center justify-between gap-3">
+    <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">List · {{ $block.List.Collection }}</p>
+    <span class="text-xs text-slate-500">{{ len $block.List.Rows }} 条</span>
+  </div>
+
+  {{ if $block.List.Rows }}
+  <div class="mt-3 overflow-x-auto rounded-2xl bg-white/70 shadow-inner-soft">
+    <table class="m5-table">
+      <thead>
+        <tr>
+          {{ range $block.List.Columns }}
+          <th>{{ .Label }}</th>
+          {{ end }}
+          {{ if not $root.PreviewApp.ReadOnly }}
+          <th>操作</th>
+          {{ end }}
+        </tr>
+      </thead>
+      <tbody>
+        {{ range $block.List.Rows }}
+        <tr>
+          {{ range .Cells }}
+          <td class="{{ .ValueClass }}">{{ .ValueText }}</td>
+          {{ end }}
+          {{ if not $root.PreviewApp.ReadOnly }}
+          <td>
+            <div class="flex items-center gap-2">
+              <a
+                href="{{ $root.PreviewPageBasePath }}?page={{ $root.PreviewPageID }}&edit_collection={{ $block.List.Collection }}&edit_record={{ .ID }}"
+                class="text-xs text-slate-600 hover:text-slate-900"
+                {{ if $root.PreviewPanelPath }}
+                hx-get="{{ $root.PreviewPanelPath }}?page={{ $root.PreviewPageID }}&edit_collection={{ $block.List.Collection }}&edit_record={{ .ID }}"
+                hx-target="#project-preview-panel"
+                hx-swap="outerHTML"
+                hx-push-url="false"
+                {{ end }}
+              >编辑</a>
+              <form
+                method="post"
+                action="{{ $root.PreviewActionBasePath }}/records/{{ $block.List.Collection }}/{{ .ID }}/delete"
+                {{ if not $root.PreviewApp.ReadOnly }}
+                hx-post="{{ $root.PreviewActionBasePath }}/records/{{ $block.List.Collection }}/{{ .ID }}/delete"
+                hx-target="#project-preview-panel"
+                hx-swap="outerHTML"
+                hx-sync="this:replace"
+                {{ end }}
+              >
+                <input type="hidden" name="page_id" value="{{ $root.PreviewPageID }}">
+                <input type="hidden" name="preview_mode" value="{{ $root.PreviewMode }}">
+                <input type="hidden" name="edit_collection" value="{{ $root.PreviewEditCollection }}">
+                <input type="hidden" name="edit_record" value="{{ $root.PreviewEditRecordID }}">
+                <button type="submit" class="text-xs text-rose-600 hover:text-rose-700">删除</button>
+              </form>
+            </div>
+          </td>
+          {{ end }}
+        </tr>
+        {{ end }}
+      </tbody>
+    </table>
+  </div>
+  {{ else }}
+  <p class="mt-3 text-sm text-slate-500">还没有记录，先在上面的表单里新增一条。</p>
+  {{ end }}
+</section>
+{{ end }}
+
+{{ if eq $block.Type "toggle" }}
+<section class="ghost-subpanel !border-0">
+  <div class="flex items-center justify-between gap-3">
+    <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Toggle · {{ $block.Toggle.Collection }}.{{ $block.Toggle.Field }}</p>
+    {{ if $root.PreviewApp.ReadOnly }}<span class="text-xs text-slate-400">只读</span>{{ end }}
+  </div>
+
+  {{ if $block.Toggle.Rows }}
+  <div class="mt-3 space-y-2">
+    {{ range $block.Toggle.Rows }}
+    <form
+      method="post"
+      action="{{ $root.PreviewActionBasePath }}/toggle/{{ $block.Toggle.Collection }}/{{ .RecordID }}/{{ $block.Toggle.Field }}"
+      class="m5-toggle-row"
+      {{ if not $root.PreviewApp.ReadOnly }}
+      hx-post="{{ $root.PreviewActionBasePath }}/toggle/{{ $block.Toggle.Collection }}/{{ .RecordID }}/{{ $block.Toggle.Field }}"
+      hx-target="#project-preview-panel"
+      hx-swap="outerHTML"
+      hx-sync="this:replace"
+      {{ end }}
+    >
+      <input type="hidden" name="page_id" value="{{ $root.PreviewPageID }}">
+      <input type="hidden" name="preview_mode" value="{{ $root.PreviewMode }}">
+      <input type="hidden" name="edit_collection" value="{{ $root.PreviewEditCollection }}">
+      <input type="hidden" name="edit_record" value="{{ $root.PreviewEditRecordID }}">
+      <div class="min-w-0">
+        <p class="truncate text-sm font-medium text-slate-800">{{ .Title }}</p>
+        <p class="text-xs text-slate-500">{{ if .On }}true{{ else }}false{{ end }}</p>
+      </div>
+      <button type="submit" class="m5-toggle-btn {{ if .On }}is-on{{ else }}is-off{{ end }}" {{ if $root.PreviewApp.ReadOnly }}disabled{{ end }}>
+        <span class="m5-toggle-knob" aria-hidden="true"></span>
+      </button>
+    </form>
+    {{ end }}
+  </div>
+  {{ else }}
+  <p class="mt-3 text-sm text-slate-500">暂无可切换记录。</p>
+  {{ end }}
+</section>
+{{ end }}
+
+{{ if $block.UnsupportedText }}
+<section class="ghost-subpanel !border-0">
+  <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Primitive</p>
+  <p class="mt-2 text-sm leading-6 text-slate-600">{{ $block.UnsupportedText }}</p>
+</section>
+{{ end }}
+{{ end }}
