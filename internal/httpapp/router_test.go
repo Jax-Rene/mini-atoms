@@ -3,6 +3,7 @@ package httpapp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,9 +12,11 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"mini-atoms/internal/auth"
 	"mini-atoms/internal/config"
+	"mini-atoms/internal/generation"
 	specpkg "mini-atoms/internal/spec"
 	"mini-atoms/internal/store"
 )
@@ -29,6 +32,177 @@ func TestHealthz(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+}
+
+func TestDebugResetDBEndpointDisabledByDefault(t *testing.T) {
+	t.Parallel()
+
+	h := newTestRouter(t)
+
+	form := url.Values{}
+	form.Set("confirm", "DELETE_ALL_DATA")
+	req := httptest.NewRequest(http.MethodPost, "/debug/reset-db", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("X-Debug-Reset-Token", "any-token")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+}
+
+func TestDebugResetDBEndpointRequiresTokenAndClearsAllData(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "router-debug-reset.db")
+	db, err := store.OpenSQLite(ctx, dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("gorm db(): %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+
+	now := time.Now().UTC()
+	shareSlug := "share-debug-reset"
+	publishedSlug := "published-debug-reset"
+	publishedAt := now
+
+	if err := db.WithContext(ctx).Create(&store.AppMetaModel{
+		Key:   "seed",
+		Value: "1",
+	}).Error; err != nil {
+		t.Fatalf("seed app_meta: %v", err)
+	}
+
+	user := store.UserModel{
+		Email:        "debug-reset@example.com",
+		PasswordHash: "hashed-password",
+	}
+	if err := db.WithContext(ctx).Create(&user).Error; err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+
+	if err := db.WithContext(ctx).Create(&store.UserSessionModel{
+		UserID:       user.ID,
+		SessionToken: "debug-reset-session-token",
+		ExpiresAt:    now.Add(24 * time.Hour),
+	}).Error; err != nil {
+		t.Fatalf("seed user_session: %v", err)
+	}
+
+	project := store.ProjectModel{
+		UserID:            user.ID,
+		Slug:              "debug-reset-project",
+		Name:              "Debug Reset Project",
+		GoalPrompt:        "seed project",
+		ShareSlug:         &shareSlug,
+		PublishedSlug:     &publishedSlug,
+		DraftSpecJSON:     `{"pages":[]}`,
+		PublishedSpecJSON: `{"pages":[]}`,
+		PublishedAt:       &publishedAt,
+	}
+	if err := db.WithContext(ctx).Create(&project).Error; err != nil {
+		t.Fatalf("seed project: %v", err)
+	}
+
+	collection := store.CollectionModel{
+		ProjectID:  project.ID,
+		Name:       "todos",
+		SchemaJSON: `{"name":"todos","fields":[{"name":"title","type":"text","required":true}]}`,
+	}
+	if err := db.WithContext(ctx).Create(&collection).Error; err != nil {
+		t.Fatalf("seed collection: %v", err)
+	}
+
+	if err := db.WithContext(ctx).Create(&store.RecordModel{
+		ProjectID:    project.ID,
+		CollectionID: collection.ID,
+		DataJSON:     `{"title":"first item"}`,
+	}).Error; err != nil {
+		t.Fatalf("seed record: %v", err)
+	}
+
+	if err := db.WithContext(ctx).Create(&store.ChatMessageModel{
+		ProjectID: project.ID,
+		RoundNo:   1,
+		Role:      store.ChatRoleUser,
+		Content:   "hello",
+	}).Error; err != nil {
+		t.Fatalf("seed chat_message: %v", err)
+	}
+
+	countRows := func(table string) int64 {
+		t.Helper()
+		var count int64
+		if err := db.WithContext(ctx).Table(table).Count(&count).Error; err != nil {
+			t.Fatalf("count rows in %s: %v", table, err)
+		}
+		return count
+	}
+
+	seededTables := []string{
+		"app_meta",
+		"users",
+		"user_sessions",
+		"projects",
+		"collections",
+		"records",
+		"chat_messages",
+	}
+	for _, table := range seededTables {
+		if got := countRows(table); got == 0 {
+			t.Fatalf("expected seeded rows in %s", table)
+		}
+	}
+
+	h, err := NewRouter(Dependencies{
+		Config: config.Config{
+			AppEnv:                 "production",
+			HTTPAddr:               ":0",
+			DatabasePath:           dbPath,
+			SessionSecret:          "test-session-secret",
+			DebugResetAllDataToken: "internal-reset-token",
+		},
+		DB: db,
+	})
+	if err != nil {
+		t.Fatalf("new router: %v", err)
+	}
+
+	badReq := httptest.NewRequest(http.MethodPost, "/debug/reset-db", strings.NewReader("confirm=DELETE_ALL_DATA"))
+	badReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	badReq.Header.Set("X-Debug-Reset-Token", "wrong-token")
+	badRec := httptest.NewRecorder()
+	h.ServeHTTP(badRec, badReq)
+	if badRec.Code != http.StatusForbidden {
+		t.Fatalf("bad token status = %d, want %d", badRec.Code, http.StatusForbidden)
+	}
+
+	form := url.Values{}
+	form.Set("confirm", "DELETE_ALL_DATA")
+	req := httptest.NewRequest(http.MethodPost, "/debug/reset-db", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("X-Debug-Reset-Token", "internal-reset-token")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body=%q", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"status":"ok"`) {
+		t.Fatalf("response body missing status ok: %q", rec.Body.String())
+	}
+
+	for _, table := range seededTables {
+		if got := countRows(table); got != 0 {
+			t.Fatalf("rows in %s = %d, want 0", table, got)
+		}
 	}
 }
 
@@ -312,6 +486,135 @@ func TestCreateProjectAndOpenDetail(t *testing.T) {
 	}
 }
 
+func TestCreateProjectUsesAIProjectNameWhenConfigured(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "router-ai-project-name.db")
+	db, err := store.OpenSQLite(ctx, dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("gorm db(): %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+
+	namer := &fakeProjectNamer{name: "AI 看板助手"}
+	h, err := NewRouter(Dependencies{
+		Config: config.Config{
+			AppEnv:        "test",
+			HTTPAddr:      ":0",
+			DatabasePath:  dbPath,
+			SessionSecret: "test-session-secret",
+		},
+		DB:                   db,
+		ProjectNameGenerator: namer,
+	})
+	if err != nil {
+		t.Fatalf("new router: %v", err)
+	}
+
+	email := "ai-name@example.com"
+	sessionCookie := registerAndLoginForTest(t, h, email)
+
+	form := url.Values{}
+	form.Set("goal_prompt", "帮我做一个简单看板")
+
+	req := httptest.NewRequest(http.MethodPost, "/projects", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(sessionCookie)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("create project status = %d, want %d", rec.Code, http.StatusSeeOther)
+	}
+	projectPath := rec.Header().Get("Location")
+	slug := strings.TrimPrefix(projectPath, "/projects/")
+
+	authRepo := store.NewAuthRepo(db)
+	user, err := authRepo.GetUserByEmail(ctx, email)
+	if err != nil {
+		t.Fatalf("GetUserByEmail() error = %v", err)
+	}
+	projectRepo := store.NewProjectRepo(db)
+	project, err := projectRepo.GetProjectByUserAndSlug(ctx, user.ID, slug)
+	if err != nil {
+		t.Fatalf("GetProjectByUserAndSlug() error = %v", err)
+	}
+	if project.Name != "AI 看板助手" {
+		t.Fatalf("project.Name = %q, want %q", project.Name, "AI 看板助手")
+	}
+	if namer.gotGoalPrompt != "帮我做一个简单看板" {
+		t.Fatalf("namer gotGoalPrompt = %q", namer.gotGoalPrompt)
+	}
+}
+
+func TestCreateProjectFallsBackWhenAIProjectNameFails(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "router-ai-project-name-fallback.db")
+	db, err := store.OpenSQLite(ctx, dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("gorm db(): %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+
+	namer := &fakeProjectNamer{err: fmt.Errorf("ai unavailable")}
+	h, err := NewRouter(Dependencies{
+		Config: config.Config{
+			AppEnv:        "test",
+			HTTPAddr:      ":0",
+			DatabasePath:  dbPath,
+			SessionSecret: "test-session-secret",
+		},
+		DB:                   db,
+		ProjectNameGenerator: namer,
+	})
+	if err != nil {
+		t.Fatalf("new router: %v", err)
+	}
+
+	email := "ai-name-fallback@example.com"
+	sessionCookie := registerAndLoginForTest(t, h, email)
+
+	form := url.Values{}
+	form.Set("goal_prompt", "帮我做一个简单看板")
+
+	req := httptest.NewRequest(http.MethodPost, "/projects", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(sessionCookie)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("create project status = %d, want %d", rec.Code, http.StatusSeeOther)
+	}
+	projectPath := rec.Header().Get("Location")
+	slug := strings.TrimPrefix(projectPath, "/projects/")
+
+	authRepo := store.NewAuthRepo(db)
+	user, err := authRepo.GetUserByEmail(ctx, email)
+	if err != nil {
+		t.Fatalf("GetUserByEmail() error = %v", err)
+	}
+	projectRepo := store.NewProjectRepo(db)
+	project, err := projectRepo.GetProjectByUserAndSlug(ctx, user.ID, slug)
+	if err != nil {
+		t.Fatalf("GetProjectByUserAndSlug() error = %v", err)
+	}
+	if project.Name != "简单看板" {
+		t.Fatalf("project.Name = %q, want %q", project.Name, "简单看板")
+	}
+}
+
 func TestGenerateDraftFromProjectDetail(t *testing.T) {
 	t.Parallel()
 
@@ -446,7 +749,7 @@ func TestProjectPreviewCreateRecordHTMXPartial(t *testing.T) {
 	}
 }
 
-func TestProjectPreviewToggleRowIncludesEditLink(t *testing.T) {
+func TestProjectPreviewSuppressesRedundantToggleBlockAndKeepsListEditLink(t *testing.T) {
 	t.Parallel()
 
 	h := newTestRouter(t)
@@ -471,20 +774,17 @@ func TestProjectPreviewToggleRowIncludesEditLink(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	toggleIdx := strings.Index(body, `class="m5-toggle-row"`)
-	if toggleIdx < 0 {
-		t.Fatalf("preview create body missing toggle row, body=%q", body)
+	if strings.Contains(body, `class="m5-toggle-row"`) {
+		t.Fatalf("preview create body should suppress redundant toggle block row, body=%q", body)
 	}
-	snippetEnd := toggleIdx + 1800
-	if snippetEnd > len(body) {
-		snippetEnd = len(body)
+	if !strings.Contains(body, `class="m5-toggle-btn is-on"`) {
+		t.Fatalf("preview create body missing inline list toggle button, body=%q", body)
 	}
-	toggleSnippet := body[toggleIdx:snippetEnd]
-	if !strings.Contains(toggleSnippet, ">编辑<") {
-		t.Fatalf("toggle row should include edit link, snippet=%q", toggleSnippet)
+	if !strings.Contains(body, ">编辑<") {
+		t.Fatalf("preview create body missing edit link, body=%q", body)
 	}
-	if !strings.Contains(toggleSnippet, "edit_collection=todos") || !strings.Contains(toggleSnippet, "edit_record=") {
-		t.Fatalf("toggle row edit link missing edit params, snippet=%q", toggleSnippet)
+	if !strings.Contains(body, "edit_collection=todos") || !strings.Contains(body, "edit_record=") {
+		t.Fatalf("preview create body edit link missing edit params, body=%q", body)
 	}
 }
 
@@ -1013,3 +1313,19 @@ func newTestRouter(t *testing.T) http.Handler {
 
 	return h
 }
+
+type fakeProjectNamer struct {
+	name          string
+	err           error
+	gotGoalPrompt string
+}
+
+func (f *fakeProjectNamer) GenerateProjectName(_ context.Context, goalPrompt string) (string, error) {
+	f.gotGoalPrompt = goalPrompt
+	if f.err != nil {
+		return "", f.err
+	}
+	return f.name, nil
+}
+
+var _ generation.ProjectNameGenerator = (*fakeProjectNamer)(nil)

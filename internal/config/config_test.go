@@ -30,11 +30,12 @@ func TestLoadFromLookup_Overrides(t *testing.T) {
 	t.Parallel()
 
 	env := map[string]string{
-		"APP_ENV":        "staging",
-		"APP_ADDR":       ":9090",
-		"DATABASE_PATH":  "./tmp/test.db",
-		"SESSION_SECRET": "secret-123",
-		"APP_BASE_URL":   "https://example.com",
+		"APP_ENV":                    "staging",
+		"APP_ADDR":                   ":9090",
+		"DATABASE_PATH":              "./tmp/test.db",
+		"SESSION_SECRET":             "secret-123",
+		"APP_BASE_URL":               "https://example.com",
+		"DEBUG_RESET_ALL_DATA_TOKEN": "internal-only-token",
 	}
 
 	cfg, err := loadFromLookup(func(key string) (string, bool) {
@@ -45,7 +46,7 @@ func TestLoadFromLookup_Overrides(t *testing.T) {
 		t.Fatalf("load config: %v", err)
 	}
 
-	if cfg.AppEnv != "staging" || cfg.HTTPAddr != ":9090" || cfg.DatabasePath != "./tmp/test.db" || cfg.SessionSecret != "secret-123" || cfg.AppBaseURL != "https://example.com" {
+	if cfg.AppEnv != "staging" || cfg.HTTPAddr != ":9090" || cfg.DatabasePath != "./tmp/test.db" || cfg.SessionSecret != "secret-123" || cfg.AppBaseURL != "https://example.com" || cfg.DebugResetAllDataToken != "internal-only-token" {
 		t.Fatalf("unexpected config: %+v", cfg)
 	}
 }

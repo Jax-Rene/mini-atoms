@@ -135,6 +135,77 @@ func (c *DeepSeekClient) GenerateSpecJSON(ctx context.Context, req ClientRequest
 	return content, nil
 }
 
+func (c *DeepSeekClient) GenerateProjectName(ctx context.Context, goalPrompt string) (string, error) {
+	if c == nil {
+		return "", fmt.Errorf("deepseek client is nil")
+	}
+	if strings.TrimSpace(c.apiKey) == "" {
+		return "", fmt.Errorf("deepseek api key is empty")
+	}
+	goalPrompt = strings.TrimSpace(goalPrompt)
+	if goalPrompt == "" {
+		return "", fmt.Errorf("deepseek request goal prompt is empty")
+	}
+
+	startedAt := time.Now()
+	log.Printf("deepseek project-name request started: model=%s prompt_chars=%d", c.model, len([]rune(goalPrompt)))
+
+	body := map[string]any{
+		"model":       c.model,
+		"temperature": 0.2,
+		"messages":    c.buildProjectNameMessages(goalPrompt),
+	}
+
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return "", fmt.Errorf("marshal deepseek project-name request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat/completions", bytes.NewReader(payload))
+	if err != nil {
+		return "", fmt.Errorf("build deepseek project-name request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+c.apiKey)
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		log.Printf("deepseek project-name request failed: model=%s duration_ms=%d err=%v", c.model, time.Since(startedAt).Milliseconds(), err)
+		return "", fmt.Errorf("call deepseek for project name: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return "", fmt.Errorf("read deepseek project-name response: %w", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		msg := parseDeepSeekErrorMessage(respBody)
+		if msg == "" {
+			msg = strings.TrimSpace(string(respBody))
+		}
+		log.Printf("deepseek project-name response error: model=%s status=%d duration_ms=%d", c.model, resp.StatusCode, time.Since(startedAt).Milliseconds())
+		return "", fmt.Errorf("deepseek project-name returned status %d: %s", resp.StatusCode, msg)
+	}
+
+	var parsed deepSeekChatCompletionResponse
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		return "", fmt.Errorf("parse deepseek project-name response: %w", err)
+	}
+	if len(parsed.Choices) == 0 {
+		return "", fmt.Errorf("deepseek project-name response has no choices")
+	}
+
+	content := normalizeProjectNameText(parsed.Choices[0].Message.Content)
+	if content == "" {
+		return "", fmt.Errorf("deepseek project-name response content is empty after cleanup")
+	}
+
+	log.Printf("deepseek project-name request succeeded: model=%s status=%d duration_ms=%d response_chars=%d", c.model, resp.StatusCode, time.Since(startedAt).Milliseconds(), len([]rune(content)))
+	return content, nil
+}
+
 func (c *DeepSeekClient) buildMessages(req ClientRequest) []deepSeekMessage {
 	systemPrompt := strings.TrimSpace(`
 你是 mini-atoms 的 Spec 生成器。你必须只输出 JSON（不要 markdown 代码块、不要解释文字）。
@@ -152,6 +223,7 @@ func (c *DeepSeekClient) buildMessages(req ClientRequest) []deepSeekMessage {
 - collections <= 5；每个 collection 字段 <= 10
 - list/form/toggle/stats 每个 block 都必须显式包含 collection（不能省略），即使同页其他 block 已写过
 - toggle.field 必须引用 bool 字段
+- 如果某个 list 已经展示了同 collection 的 bool 字段，默认不要再额外生成同字段的 toggle block（除非用户明确要求独立状态切换区）
 - stats.metric 只允许 count 或 sum
 - stats.metric = sum 时 field 必须是 int 或 real
 - enum 字段必须包含非空 options
@@ -180,6 +252,24 @@ func (c *DeepSeekClient) buildMessages(req ClientRequest) []deepSeekMessage {
 	return []deepSeekMessage{
 		{Role: "system", Content: systemPrompt},
 		{Role: "user", Content: userBuilder.String()},
+	}
+}
+
+func (c *DeepSeekClient) buildProjectNameMessages(goalPrompt string) []deepSeekMessage {
+	systemPrompt := strings.TrimSpace(`
+你是 mini-atoms 的项目命名助手。根据用户需求生成一个简洁的项目名称。
+
+输出规则（严格）：
+- 只输出项目名称文本，不要解释，不要前后缀，不要 markdown 代码块
+- 不要使用引号、书名号或项目名标签（例如“项目名：”）
+- 优先 4-18 个字（中文）或 2-4 个单词（英文）
+- 名称应直观表达目标场景与用途
+`)
+
+	userPrompt := strings.TrimSpace("用户需求：\n" + strings.TrimSpace(goalPrompt))
+	return []deepSeekMessage{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: userPrompt},
 	}
 }
 
@@ -313,6 +403,16 @@ func normalizeSpecAliasesJSON(s string) string {
 					normalizeStringAlias(bm, "session_collection", "sessionCollection", "session_collection_name")
 					moveAliasValue(bm, "items", "links", "nav_items", "navItems")
 
+					if metric, ok := bm["metric"].(string); ok {
+						bm["metric"] = strings.TrimSpace(metric)
+					}
+					if blockType, ok := bm["type"].(string); ok && strings.TrimSpace(blockType) == "stats" {
+						if metric, ok := bm["metric"].(string); !ok || strings.TrimSpace(metric) == "" {
+							// LLM occasionally emits an empty metric; default to the safest valid aggregator.
+							bm["metric"] = "count"
+						}
+					}
+
 					if items, ok := bm["items"].([]any); ok {
 						for k, item := range items {
 							im, ok := item.(map[string]any)
@@ -401,4 +501,27 @@ func normalizeStringAlias(m map[string]any, target string, aliases ...string) {
 	for _, alias := range aliases {
 		delete(m, alias)
 	}
+}
+
+func normalizeProjectNameText(s string) string {
+	s = stripMarkdownCodeFence(s)
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+
+	if idx := strings.IndexAny(s, "\r\n"); idx >= 0 {
+		s = s[:idx]
+	}
+	s = strings.TrimSpace(s)
+
+	for _, prefix := range []string{"项目名：", "项目名:", "名称：", "名称:", "name:", "project name:"} {
+		if strings.HasPrefix(strings.ToLower(s), strings.ToLower(prefix)) {
+			s = strings.TrimSpace(s[len(prefix):])
+			break
+		}
+	}
+
+	s = strings.TrimSpace(strings.Trim(s, "\"'`“”‘’《》【】[]()（）"))
+	return s
 }

@@ -31,11 +31,14 @@ const (
 	sessionCookieName = "mini_atoms_session"
 	demoLoginEmail    = "demo@mini-atoms.local"
 	demoLoginPassword = "demo123456"
+	debugResetHeader  = "X-Debug-Reset-Token"
+	debugResetConfirm = "DELETE_ALL_DATA"
 )
 
 type Dependencies struct {
-	Config config.Config
-	DB     *gorm.DB
+	Config               config.Config
+	DB                   *gorm.DB
+	ProjectNameGenerator generation.ProjectNameGenerator
 }
 
 type server struct {
@@ -48,6 +51,7 @@ type server struct {
 	chatRepo        *store.ChatRepo
 	genService      *generation.Service
 	genProviderName string
+	projectNamer    generation.ProjectNameGenerator
 	templates       *template.Template
 }
 
@@ -167,6 +171,13 @@ func NewRouter(deps Dependencies) (http.Handler, error) {
 		Chats:    s.chatRepo,
 		Client:   genClient,
 	})
+	if deps.ProjectNameGenerator != nil {
+		s.projectNamer = deps.ProjectNameGenerator
+	} else if strings.TrimSpace(deps.Config.DeepSeekAPIKey) != "" {
+		if namer, ok := genClient.(generation.ProjectNameGenerator); ok {
+			s.projectNamer = namer
+		}
+	}
 
 	engine := gin.New()
 	engine.Use(gin.Recovery())
@@ -178,6 +189,9 @@ func NewRouter(deps Dependencies) (http.Handler, error) {
 	engine.GET("/", s.handleHome)
 	engine.GET("/healthz", s.handleHealthz)
 	engine.GET("/readyz", s.handleReadyz)
+	if strings.TrimSpace(s.cfg.DebugResetAllDataToken) != "" {
+		engine.POST("/debug/reset-db", s.handleDebugResetDB)
+	}
 	engine.GET("/register", s.handleRegisterPage)
 	engine.POST("/register", s.handleRegisterSubmit)
 	engine.GET("/login", s.handleLoginPage)
@@ -273,6 +287,42 @@ func (s *server) handleReadyz(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "ready"})
+}
+
+func (s *server) handleDebugResetDB(c *gin.Context) {
+	expectedToken := strings.TrimSpace(s.cfg.DebugResetAllDataToken)
+	if expectedToken == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		return
+	}
+
+	if strings.TrimSpace(c.GetHeader(debugResetHeader)) != expectedToken {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
+
+	confirm := strings.TrimSpace(c.PostForm("confirm"))
+	if confirm == "" {
+		confirm = strings.TrimSpace(c.Query("confirm"))
+	}
+	if confirm != debugResetConfirm {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":            "invalid confirm",
+			"required_confirm": debugResetConfirm,
+		})
+		return
+	}
+
+	if err := store.ClearAllData(c.Request.Context(), s.db); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "clear all data failed"})
+		return
+	}
+
+	s.clearSessionCookie(c)
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "ok",
+		"message": "all database data cleared",
+	})
 }
 
 func (s *server) handleRegisterPage(c *gin.Context) {
@@ -418,7 +468,8 @@ func (s *server) handleCreateProjectSubmit(c *gin.Context) {
 		return
 	}
 
-	project, err := s.projectRepo.CreateProject(c.Request.Context(), user.ID, "", goalPrompt)
+	projectName := s.generateProjectNameForCreate(c.Request.Context(), goalPrompt)
+	project, err := s.projectRepo.CreateProject(c.Request.Context(), user.ID, projectName, goalPrompt)
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {
 			s.renderProjectsPage(c, http.StatusConflict, user, "项目创建失败，请重试", "", c.PostForm("goal_prompt"), "")
@@ -429,6 +480,28 @@ func (s *server) handleCreateProjectSubmit(c *gin.Context) {
 	}
 
 	c.Redirect(http.StatusSeeOther, "/projects/"+project.Slug)
+}
+
+func (s *server) generateProjectNameForCreate(ctx context.Context, goalPrompt string) string {
+	if s == nil || s.projectNamer == nil {
+		return ""
+	}
+
+	namingCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+
+	name, err := s.projectNamer.GenerateProjectName(namingCtx, goalPrompt)
+	if err != nil {
+		log.Printf("project name generation failed: provider=%s err=%v", s.genProviderName, err)
+		return ""
+	}
+
+	name = strings.TrimSpace(name)
+	if name == "" {
+		log.Printf("project name generation returned empty result: provider=%s", s.genProviderName)
+		return ""
+	}
+	return name
 }
 
 func (s *server) handleProjectDetail(c *gin.Context) {
@@ -1903,11 +1976,16 @@ func (s *server) loadRecordEditValues(ctx context.Context, projectID int64, coll
 	if err := json.Unmarshal([]byte(collection.SchemaJSON), &schema); err != nil {
 		return nil, fmt.Errorf("parse collection schema_json: %w", err)
 	}
+	return buildRecordEditValues(schema, record.Data), nil
+}
+
+func buildRecordEditValues(schema specpkg.CollectionSpec, recordData map[string]any) map[string]string {
+	aliased := apprender.FillAliasedRecordFields(schema, recordData)
 	out := make(map[string]string, len(schema.Fields))
 	for _, f := range schema.Fields {
-		out[f.Name] = recordValueForFormField(f, record.Data[f.Name])
+		out[f.Name] = recordValueForFormField(f, aliased[f.Name])
 	}
-	return out, nil
+	return out
 }
 
 func recordValueForFormField(field specpkg.FieldSpec, v any) string {

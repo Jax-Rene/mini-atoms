@@ -165,6 +165,7 @@ func RenderApp(input RenderInput) (AppView, error) {
 	if err := specpkg.ValidateAppSpec(input.Spec); err != nil {
 		return AppView{}, fmt.Errorf("render app: invalid spec: %w", err)
 	}
+	input.Collections = withAliasedCollectionRecords(input.Collections)
 
 	selected := strings.TrimSpace(input.SelectedPageID)
 	currentPage := input.Spec.Pages[0]
@@ -189,8 +190,9 @@ func RenderApp(input RenderInput) (AppView, error) {
 		})
 	}
 
-	blocks := make([]BlockView, 0, len(currentPage.Blocks))
-	for _, b := range currentPage.Blocks {
+	pageBlocks := suppressRedundantToggleBlocks(currentPage.Blocks, input.Spec.Collections)
+	blocks := make([]BlockView, 0, len(pageBlocks))
+	for _, b := range pageBlocks {
 		blockView := BlockView{
 			Type:       b.Type,
 			Collection: b.Collection,
@@ -364,6 +366,190 @@ func RenderApp(input RenderInput) (AppView, error) {
 			Blocks: blocks,
 		},
 	}, nil
+}
+
+func withAliasedCollectionRecords(in map[string]CollectionData) map[string]CollectionData {
+	if len(in) == 0 {
+		return in
+	}
+	out := make(map[string]CollectionData, len(in))
+	for name, coll := range in {
+		if len(coll.Records) == 0 {
+			out[name] = coll
+			continue
+		}
+		records := make([]Record, 0, len(coll.Records))
+		for _, rec := range coll.Records {
+			records = append(records, Record{
+				ID:   rec.ID,
+				Data: FillAliasedRecordFields(coll.Schema, rec.Data),
+			})
+		}
+		coll.Records = records
+		out[name] = coll
+	}
+	return out
+}
+
+// FillAliasedRecordFields backfills common legacy field names into newer schema fields
+// (for example: task -> title, done -> completed) so preview/edit can survive schema drift.
+func FillAliasedRecordFields(schema specpkg.CollectionSpec, data map[string]any) map[string]any {
+	if len(data) == 0 || len(schema.Fields) == 0 {
+		return data
+	}
+
+	out := make(map[string]any, len(data))
+	for k, v := range data {
+		out[k] = v
+	}
+
+	for _, target := range schema.Fields {
+		if hasRenderableFieldValue(target, out[target.Name]) {
+			continue
+		}
+		src, ok := findAliasedFieldValue(schema, out, target)
+		if !ok {
+			continue
+		}
+		out[target.Name] = src
+	}
+	return out
+}
+
+func findAliasedFieldValue(schema specpkg.CollectionSpec, data map[string]any, target specpkg.FieldSpec) (any, bool) {
+	targetConcept := fieldAliasConcept(target.Type, target.Name)
+	if targetConcept == "" {
+		return nil, false
+	}
+
+	for _, candidate := range schema.Fields {
+		if candidate.Name == target.Name || candidate.Type != target.Type {
+			continue
+		}
+		val, ok := data[candidate.Name]
+		if !ok || !hasRenderableFieldValue(candidate, val) {
+			continue
+		}
+		if fieldAliasConcept(candidate.Type, candidate.Name) != targetConcept {
+			continue
+		}
+		return val, true
+	}
+	return nil, false
+}
+
+func hasRenderableFieldValue(_ specpkg.FieldSpec, v any) bool {
+	if v == nil {
+		return false
+	}
+	switch x := v.(type) {
+	case string:
+		// 空文本对预览/表单没有帮助，允许继续尝试回填旧字段值。
+		return strings.TrimSpace(x) != ""
+	default:
+		return true
+	}
+}
+
+func fieldAliasConcept(fieldType, fieldName string) string {
+	switch fieldType {
+	case specpkg.FieldTypeBool:
+		if matchAliasGroup(fieldName, "done", "completed", "complete", "is_done", "is_completed", "finished", "checked") {
+			return "bool.completed"
+		}
+	case specpkg.FieldTypeText:
+		if matchAliasGroup(fieldName, "title", "task", "name") {
+			return "text.title"
+		}
+		if matchAliasGroup(fieldName, "description", "desc", "detail", "details", "note", "notes", "content") {
+			return "text.description"
+		}
+	case specpkg.FieldTypeDate, specpkg.FieldTypeDatetime:
+		if matchAliasGroup(fieldName, "due_date", "due", "deadline", "target_date") {
+			return "time.due"
+		}
+		if fieldType == specpkg.FieldTypeDatetime && matchAliasGroup(fieldName, "completed_at", "finished_at", "ended_at") {
+			return "time.completed"
+		}
+	case specpkg.FieldTypeInt, specpkg.FieldTypeReal, specpkg.FieldTypeEnum:
+		if matchAliasGroup(fieldName, "priority", "priority_level", "level", "rank") {
+			return "priority"
+		}
+	}
+	return ""
+}
+
+func matchAliasGroup(fieldName string, candidates ...string) bool {
+	normalized := normalizeAliasFieldName(fieldName)
+	for _, candidate := range candidates {
+		if normalized == normalizeAliasFieldName(candidate) {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeAliasFieldName(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+func suppressRedundantToggleBlocks(blocks []specpkg.BlockSpec, collections []specpkg.CollectionSpec) []specpkg.BlockSpec {
+	if len(blocks) == 0 {
+		return nil
+	}
+
+	schemaByCollection := make(map[string]specpkg.CollectionSpec, len(collections))
+	for _, c := range collections {
+		name := strings.TrimSpace(c.Name)
+		if name == "" {
+			continue
+		}
+		schemaByCollection[name] = c
+	}
+
+	listVisibleBoolFields := make(map[string]struct{})
+	for _, b := range blocks {
+		if b.Type != "list" {
+			continue
+		}
+		collectionName := strings.TrimSpace(b.Collection)
+		if collectionName == "" {
+			continue
+		}
+		schema, ok := schemaByCollection[collectionName]
+		if !ok {
+			continue
+		}
+		for _, f := range resolveFieldsForBlock([]string(b.Fields), schema) {
+			if f.Type != specpkg.FieldTypeBool {
+				continue
+			}
+			listVisibleBoolFields[collectionName+"."+f.Name] = struct{}{}
+		}
+	}
+	if len(listVisibleBoolFields) == 0 {
+		return blocks
+	}
+
+	out := make([]specpkg.BlockSpec, 0, len(blocks))
+	for _, b := range blocks {
+		if b.Type == "toggle" {
+			key := strings.TrimSpace(b.Collection) + "." + strings.TrimSpace(b.Field)
+			if _, redundant := listVisibleBoolFields[key]; redundant {
+				continue
+			}
+		}
+		out = append(out, b)
+	}
+	return out
 }
 
 func groupConsecutiveStatsBlocks(in []BlockView) []BlockView {

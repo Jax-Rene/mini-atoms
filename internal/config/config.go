@@ -15,12 +15,13 @@ const (
 )
 
 type Config struct {
-	AppEnv         string
-	HTTPAddr       string
-	DatabasePath   string
-	SessionSecret  string
-	DeepSeekAPIKey string
-	AppBaseURL     string
+	AppEnv                 string
+	HTTPAddr               string
+	DatabasePath           string
+	SessionSecret          string
+	DeepSeekAPIKey         string
+	AppBaseURL             string
+	DebugResetAllDataToken string
 }
 
 type lookupEnvFunc func(string) (string, bool)
@@ -31,12 +32,13 @@ func Load() (Config, error) {
 
 func loadFromLookup(lookup lookupEnvFunc) (Config, error) {
 	cfg := Config{
-		AppEnv:         getOrDefault(lookup, "APP_ENV", defaultAppEnv),
-		HTTPAddr:       getOrDefault(lookup, "APP_ADDR", defaultHTTPAddr),
-		DatabasePath:   getOrDefault(lookup, "DATABASE_PATH", defaultDatabasePath),
-		SessionSecret:  getOrDefault(lookup, "SESSION_SECRET", defaultSessionKey),
-		DeepSeekAPIKey: getOrDefault(lookup, "DEEPSEEK_API_KEY", ""),
-		AppBaseURL:     getOrDefault(lookup, "APP_BASE_URL", defaultAppBaseURL),
+		AppEnv:                 getOrDefault(lookup, "APP_ENV", defaultAppEnv),
+		HTTPAddr:               getOrDefault(lookup, "APP_ADDR", defaultHTTPAddr),
+		DatabasePath:           getOrDefault(lookup, "DATABASE_PATH", defaultDatabasePath),
+		SessionSecret:          getOrDefault(lookup, "SESSION_SECRET", defaultSessionKey),
+		DeepSeekAPIKey:         getOrDefault(lookup, "DEEPSEEK_API_KEY", ""),
+		AppBaseURL:             getOrDefault(lookup, "APP_BASE_URL", defaultAppBaseURL),
+		DebugResetAllDataToken: getOrDefault(lookup, "DEBUG_RESET_ALL_DATA_TOKEN", ""),
 	}
 
 	cfg.AppEnv = strings.TrimSpace(cfg.AppEnv)
@@ -45,6 +47,7 @@ func loadFromLookup(lookup lookupEnvFunc) (Config, error) {
 	cfg.SessionSecret = strings.TrimSpace(cfg.SessionSecret)
 	cfg.DeepSeekAPIKey = strings.TrimSpace(cfg.DeepSeekAPIKey)
 	cfg.AppBaseURL = strings.TrimSpace(cfg.AppBaseURL)
+	cfg.DebugResetAllDataToken = strings.TrimSpace(cfg.DebugResetAllDataToken)
 
 	if cfg.HTTPAddr == "" {
 		return Config{}, fmt.Errorf("APP_ADDR cannot be empty")

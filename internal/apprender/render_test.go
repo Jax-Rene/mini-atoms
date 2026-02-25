@@ -254,6 +254,189 @@ func TestRenderApp_ListBoolCellExposesInlineToggleState(t *testing.T) {
 	}
 }
 
+func TestRenderApp_SuppressesRedundantToggleBlockWhenListAlreadyShowsBoolField(t *testing.T) {
+	t.Parallel()
+
+	appSpec := specpkg.AppSpec{
+		AppName: "Todo",
+		Collections: []specpkg.CollectionSpec{
+			{
+				Name: "todos",
+				Fields: []specpkg.FieldSpec{
+					{Name: "title", Type: specpkg.FieldTypeText},
+					{Name: "done", Type: specpkg.FieldTypeBool},
+				},
+			},
+		},
+		Pages: []specpkg.PageSpec{
+			{
+				ID: "home",
+				Blocks: []specpkg.BlockSpec{
+					{Type: "list", Collection: "todos"},
+					{Type: "toggle", Collection: "todos", Field: "done"},
+				},
+			},
+		},
+	}
+
+	view, err := RenderApp(RenderInput{
+		Spec: appSpec,
+		Mode: ModeEditor,
+		Collections: map[string]CollectionData{
+			"todos": {
+				Schema: appSpec.Collections[0],
+				Records: []Record{
+					{ID: 1, Data: map[string]any{"title": "task 1", "done": true}},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("render app: %v", err)
+	}
+
+	if got := len(view.CurrentPage.Blocks); got != 1 {
+		t.Fatalf("blocks len = %d, want 1 (redundant toggle should be suppressed)", got)
+	}
+	if view.CurrentPage.Blocks[0].List == nil {
+		t.Fatalf("block[0] expected list, got %#v", view.CurrentPage.Blocks[0])
+	}
+}
+
+func TestRenderApp_KeepsToggleBlockWhenListDoesNotShowThatBoolField(t *testing.T) {
+	t.Parallel()
+
+	appSpec := specpkg.AppSpec{
+		AppName: "Todo",
+		Collections: []specpkg.CollectionSpec{
+			{
+				Name: "todos",
+				Fields: []specpkg.FieldSpec{
+					{Name: "title", Type: specpkg.FieldTypeText},
+					{Name: "done", Type: specpkg.FieldTypeBool},
+				},
+			},
+		},
+		Pages: []specpkg.PageSpec{
+			{
+				ID: "home",
+				Blocks: []specpkg.BlockSpec{
+					{Type: "list", Collection: "todos", Fields: specpkg.BlockFieldList{"title"}},
+					{Type: "toggle", Collection: "todos", Field: "done"},
+				},
+			},
+		},
+	}
+
+	view, err := RenderApp(RenderInput{
+		Spec: appSpec,
+		Mode: ModeEditor,
+		Collections: map[string]CollectionData{
+			"todos": {
+				Schema: appSpec.Collections[0],
+				Records: []Record{
+					{ID: 1, Data: map[string]any{"title": "task 1", "done": true}},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("render app: %v", err)
+	}
+
+	if got := len(view.CurrentPage.Blocks); got != 2 {
+		t.Fatalf("blocks len = %d, want 2 (toggle should be kept)", got)
+	}
+	if view.CurrentPage.Blocks[1].Toggle == nil {
+		t.Fatalf("block[1] expected toggle, got %#v", view.CurrentPage.Blocks[1])
+	}
+}
+
+func TestRenderApp_UsesLegacyFieldAliasesForExplicitListAndToggleBlocks(t *testing.T) {
+	t.Parallel()
+
+	appSpec := specpkg.AppSpec{
+		AppName: "Todo",
+		Collections: []specpkg.CollectionSpec{
+			{
+				Name: "todos",
+				Fields: []specpkg.FieldSpec{
+					{Name: "title", Type: specpkg.FieldTypeText},
+					{Name: "completed", Type: specpkg.FieldTypeBool},
+					// 历史字段（由 mergeAppSpecWithStoredCollections 追加到 schema）
+					{Name: "task", Type: specpkg.FieldTypeText},
+					{Name: "done", Type: specpkg.FieldTypeBool},
+				},
+			},
+		},
+		Pages: []specpkg.PageSpec{
+			{
+				ID: "home",
+				Blocks: []specpkg.BlockSpec{
+					{Type: "list", Collection: "todos", Fields: specpkg.BlockFieldList{"title"}},
+					{Type: "toggle", Collection: "todos", Field: "completed"},
+				},
+			},
+		},
+	}
+
+	view, err := RenderApp(RenderInput{
+		Spec: appSpec,
+		Mode: ModeEditor,
+		Collections: map[string]CollectionData{
+			"todos": {
+				Schema: appSpec.Collections[0],
+				Records: []Record{
+					{
+						ID: 1,
+						Data: map[string]any{
+							"task": "历史任务标题",
+							"done": true,
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("render app: %v", err)
+	}
+
+	if len(view.CurrentPage.Blocks) != 2 {
+		t.Fatalf("blocks len = %d, want 2", len(view.CurrentPage.Blocks))
+	}
+
+	list := view.CurrentPage.Blocks[0].List
+	if list == nil || len(list.Rows) != 1 {
+		t.Fatalf("list rows invalid: %#v", list)
+	}
+
+	var titleCell *ListCellView
+	for i := range list.Rows[0].Cells {
+		cell := &list.Rows[0].Cells[i]
+		switch cell.FieldName {
+		case "title":
+			titleCell = cell
+		}
+	}
+	if titleCell == nil {
+		t.Fatal("title cell not found")
+	}
+	if titleCell.ValueText != "历史任务标题" {
+		t.Fatalf("title cell value = %q, want 历史任务标题", titleCell.ValueText)
+	}
+	toggle := view.CurrentPage.Blocks[1].Toggle
+	if toggle == nil || len(toggle.Rows) != 1 {
+		t.Fatalf("toggle rows invalid: %#v", toggle)
+	}
+	if toggle.Rows[0].Title != "历史任务标题" {
+		t.Fatalf("toggle title = %q, want 历史任务标题", toggle.Rows[0].Title)
+	}
+	if !toggle.Rows[0].On {
+		t.Fatal("expected toggle row on=true via done alias")
+	}
+}
+
 func TestRenderApp_GroupsConsecutiveStatsBlocks(t *testing.T) {
 	t.Parallel()
 

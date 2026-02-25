@@ -14,20 +14,6 @@
 {{ end }}
 
 {{ define "shared_project_content" }}
-<section class="surface-marble project-hardline-hero project-detail-hero-stage project-detail-flat-surface relative overflow-hidden p-6 sm:p-8">
-  <div class="relative flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-    <div class="max-w-4xl">
-      <p class="kicker">分享页面</p>
-      <h1 class="project-hero-title mt-3">{{ .CurrentProject.Name }}</h1>
-      <div class="project-meta-list mt-4">
-      </div>
-      <div class="project-hero-lead-shell mt-5">
-        <p class="project-hero-lead">{{ .CurrentProject.GoalPrompt }}</p>
-      </div>
-    </div>
-  </div>
-</section>
-
 <section
   id="project-workbench"
   class="project-hardline-workbench project-detail-workbench-stage mt-6 grid gap-6 xl:items-stretch xl:grid-cols-[520px_minmax(0,1fr)]"
@@ -435,13 +421,6 @@
 {{ define "project_detail_preview_panel" }}
 <div id="project-preview-panel">
   <div class="marble-stage p-5 sm:p-6">
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <p class="text-sm font-semibold text-slate-900">应用预览画布</p>
-        <p class="mt-2 text-sm leading-6 text-slate-600">基于当前草稿配置渲染表单、列表、开关与统计组件，并支持在预览器内直接交互。</p>
-      </div>
-    </div>
-
     {{ if .PreviewError }}
     <div class="error-box mt-4">{{ .PreviewError }}</div>
     {{ end }}
@@ -663,73 +642,51 @@
 {{ end }}
 
 {{ if eq $block.Type "form" }}
-<section class="ghost-subpanel !border-0">
-  {{ $isEditing := and (eq $root.PreviewEditCollection $block.Form.Collection) (gt $root.PreviewEditRecordID 0) }}
+{{ $isEditing := and (eq $root.PreviewEditCollection $block.Form.Collection) (gt $root.PreviewEditRecordID 0) }}
+<section
+  class="ghost-subpanel !border-0"
+  x-data="{ formModalOpen: {{ if $isEditing }}true{{ else }}false{{ end }} }"
+  x-on:keydown.escape.window="formModalOpen = false"
+>
   <div class="flex items-center justify-between gap-3">
-    <p class="text-[11px] font-semibold tracking-[0.08em] text-slate-500">记录表单 · {{ $block.Form.Collection }}</p>
+    <div>
+      <p class="text-[11px] font-semibold tracking-[0.08em] text-slate-500">记录表单 · {{ $block.Form.Collection }}</p>
+      <p class="mt-2 text-sm text-slate-500">{{ if $isEditing }}正在编辑记录，可在弹窗中修改字段。{{ else }}{{ end }}</p>
+    </div>
     <div class="flex items-center gap-2">
       {{ if $isEditing }}<span class="text-xs text-slate-500">编辑 #{{ $root.PreviewEditRecordID }}</span>{{ end }}
-      {{ if $root.PreviewApp.ReadOnly }}<span class="text-xs text-slate-400">只读</span>{{ end }}
-    </div>
-  </div>
-  <form
-    method="post"
-    action="{{ $root.PreviewActionBasePath }}/records/{{ $block.Form.Collection }}{{ if $isEditing }}/{{ $root.PreviewEditRecordID }}{{ end }}"
-    class="mt-3 grid gap-3"
-    {{ if not $root.PreviewApp.ReadOnly }}
-    hx-post="{{ $root.PreviewActionBasePath }}/records/{{ $block.Form.Collection }}{{ if $isEditing }}/{{ $root.PreviewEditRecordID }}{{ end }}"
-    hx-target="#project-preview-panel"
-    hx-swap="outerHTML"
-    hx-sync="this:replace"
-    {{ end }}
-  >
-    <input type="hidden" name="page_id" value="{{ $root.PreviewPageID }}">
-    <input type="hidden" name="preview_mode" value="{{ $root.PreviewMode }}">
-    <input type="hidden" name="edit_collection" value="{{ $root.PreviewEditCollection }}">
-    <input type="hidden" name="edit_record" value="{{ $root.PreviewEditRecordID }}">
-
-    {{ range $block.Form.Fields }}
-    {{ $fieldValue := "" }}
-    {{ if and $isEditing $root.PreviewEditValues }}
-      {{ $fieldValue = index $root.PreviewEditValues .Name }}
-    {{ end }}
-    <div>
-      <label class="text-xs font-medium text-slate-600" for="m5-form-{{ .Name }}">{{ .Label }}</label>
-
-      {{ if eq .Type "enum" }}
-      <select id="m5-form-{{ .Name }}" name="{{ .Name }}" class="input mt-1" {{ if .Required }}required{{ end }} {{ if $root.PreviewApp.ReadOnly }}disabled{{ end }}>
-        <option value="">请选择</option>
-        {{ range .Options }}
-        <option value="{{ . }}" {{ if eq . $fieldValue }}selected{{ end }}>{{ . }}</option>
-        {{ end }}
-      </select>
-      {{ else if eq .Type "bool" }}
-      <div class="mt-2 flex items-center gap-2 rounded-2xl bg-white/80 px-3 py-2">
-        <input type="hidden" name="{{ .Name }}" value="0">
-        <input id="m5-form-{{ .Name }}" type="checkbox" name="{{ .Name }}" value="1" class="h-4 w-4 rounded border-slate-300 text-slate-900" {{ if isTruthy $fieldValue }}checked{{ end }} {{ if $root.PreviewApp.ReadOnly }}disabled{{ end }}>
-        <label for="m5-form-{{ .Name }}" class="text-sm text-slate-700">勾选表示开启</label>
-      </div>
+      {{ if $root.PreviewApp.ReadOnly }}
+      <span class="text-xs text-slate-400">只读</span>
       {{ else }}
-      <input
-        id="m5-form-{{ .Name }}"
-        name="{{ .Name }}"
-        type="{{ .InputType }}"
-        class="input mt-1"
-        value="{{ $fieldValue }}"
-        {{ if .Step }}step="{{ .Step }}"{{ end }}
-        {{ if .Required }}required{{ end }}
-        {{ if $root.PreviewApp.ReadOnly }}disabled{{ end }}
-      >
+      <button type="button" class="btn-primary" x-on:click="formModalOpen = true">{{ if $isEditing }}继续编辑{{ else }}新增记录{{ end }}</button>
       {{ end }}
     </div>
-    {{ end }}
+  </div>
 
-    <div class="flex items-center justify-between gap-3">
-      <div>
+  <div
+    x-cloak
+    x-show="formModalOpen"
+    x-transition.opacity.duration.150ms
+    class="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/35 px-4 py-6"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="m5-form-dialog-title-{{ $block.Form.Collection }}"
+    x-on:click="formModalOpen = false"
+  >
+    <div
+      class="w-full max-w-2xl rounded-[1.35rem] border border-white/70 bg-white p-5 sm:p-6"
+      x-transition.scale.opacity.duration.150ms
+      x-on:click.stop
+    >
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <p class="text-[11px] font-semibold tracking-[0.08em] text-slate-500">记录表单 · {{ $block.Form.Collection }}</p>
+          <h3 id="m5-form-dialog-title-{{ $block.Form.Collection }}" class="mt-2 text-lg font-semibold tracking-tight text-slate-900">{{ if $isEditing }}编辑记录 #{{ $root.PreviewEditRecordID }}{{ else }}新增记录{{ end }}</h3>
+        </div>
         {{ if $isEditing }}
         <a
           href="{{ $root.PreviewPageBasePath }}{{ if $root.PreviewPageID }}?page={{ $root.PreviewPageID }}{{ end }}"
-          class="text-xs text-slate-500 hover:text-slate-800"
+          class="btn-secondary"
           {{ if $root.PreviewPanelPath }}
           hx-get="{{ $root.PreviewPanelPath }}{{ if $root.PreviewPageID }}?page={{ $root.PreviewPageID }}{{ end }}"
           hx-target="#project-preview-panel"
@@ -737,11 +694,85 @@
           hx-push-url="false"
           {{ end }}
         >取消编辑</a>
+        {{ else }}
+        <button type="button" class="btn-secondary" x-on:click="formModalOpen = false">关闭</button>
         {{ end }}
       </div>
-      <button type="submit" class="btn-primary" {{ if $root.PreviewApp.ReadOnly }}disabled{{ end }}>{{ if $isEditing }}保存修改{{ else }}新增记录{{ end }}</button>
+
+      <form
+        method="post"
+        action="{{ $root.PreviewActionBasePath }}/records/{{ $block.Form.Collection }}{{ if $isEditing }}/{{ $root.PreviewEditRecordID }}{{ end }}"
+        class="mt-4 grid gap-3"
+        {{ if not $root.PreviewApp.ReadOnly }}
+        hx-post="{{ $root.PreviewActionBasePath }}/records/{{ $block.Form.Collection }}{{ if $isEditing }}/{{ $root.PreviewEditRecordID }}{{ end }}"
+        hx-target="#project-preview-panel"
+        hx-swap="outerHTML"
+        hx-sync="this:replace"
+        {{ end }}
+      >
+        <input type="hidden" name="page_id" value="{{ $root.PreviewPageID }}">
+        <input type="hidden" name="preview_mode" value="{{ $root.PreviewMode }}">
+        <input type="hidden" name="edit_collection" value="{{ $root.PreviewEditCollection }}">
+        <input type="hidden" name="edit_record" value="{{ $root.PreviewEditRecordID }}">
+
+        {{ range $block.Form.Fields }}
+        {{ $fieldValue := "" }}
+        {{ if and $isEditing $root.PreviewEditValues }}
+          {{ $fieldValue = index $root.PreviewEditValues .Name }}
+        {{ end }}
+        <div>
+          <label class="text-xs font-medium text-slate-600" for="m5-form-{{ .Name }}">{{ .Label }}</label>
+
+          {{ if eq .Type "enum" }}
+          <select id="m5-form-{{ .Name }}" name="{{ .Name }}" class="input mt-1" {{ if .Required }}required{{ end }} {{ if $root.PreviewApp.ReadOnly }}disabled{{ end }}>
+            <option value="">请选择</option>
+            {{ range .Options }}
+            <option value="{{ . }}" {{ if eq . $fieldValue }}selected{{ end }}>{{ . }}</option>
+            {{ end }}
+          </select>
+          {{ else if eq .Type "bool" }}
+          <div class="mt-2 flex items-center gap-2 rounded-2xl bg-white/80 px-3 py-2">
+            <input type="hidden" name="{{ .Name }}" value="0">
+            <input id="m5-form-{{ .Name }}" type="checkbox" name="{{ .Name }}" value="1" class="h-4 w-4 rounded border-slate-300 text-slate-900" {{ if isTruthy $fieldValue }}checked{{ end }} {{ if $root.PreviewApp.ReadOnly }}disabled{{ end }}>
+            <label for="m5-form-{{ .Name }}" class="text-sm text-slate-700">勾选表示开启</label>
+          </div>
+          {{ else }}
+          <input
+            id="m5-form-{{ .Name }}"
+            name="{{ .Name }}"
+            type="{{ .InputType }}"
+            class="input mt-1"
+            value="{{ $fieldValue }}"
+            {{ if .Step }}step="{{ .Step }}"{{ end }}
+            {{ if .Required }}required{{ end }}
+            {{ if $root.PreviewApp.ReadOnly }}disabled{{ end }}
+          >
+          {{ end }}
+        </div>
+        {{ end }}
+
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            {{ if $isEditing }}
+            <a
+              href="{{ $root.PreviewPageBasePath }}{{ if $root.PreviewPageID }}?page={{ $root.PreviewPageID }}{{ end }}"
+              class="text-xs text-slate-500 hover:text-slate-800"
+              {{ if $root.PreviewPanelPath }}
+              hx-get="{{ $root.PreviewPanelPath }}{{ if $root.PreviewPageID }}?page={{ $root.PreviewPageID }}{{ end }}"
+              hx-target="#project-preview-panel"
+              hx-swap="outerHTML"
+              hx-push-url="false"
+              {{ end }}
+            >取消编辑</a>
+            {{ else }}
+            <button type="button" class="text-xs text-slate-500 hover:text-slate-800" x-on:click="formModalOpen = false">取消</button>
+            {{ end }}
+          </div>
+          <button type="submit" class="btn-primary" {{ if $root.PreviewApp.ReadOnly }}disabled{{ end }}>{{ if $isEditing }}保存修改{{ else }}新增记录{{ end }}</button>
+        </div>
+      </form>
     </div>
-  </form>
+  </div>
 </section>
 {{ end }}
 
@@ -842,7 +873,7 @@
     </table>
   </div>
   {{ else }}
-  <p class="mt-3 text-sm text-slate-500">还没有记录，先在上面的表单里新增一条。</p>
+  <p class="mt-3 text-sm text-slate-500">还没有记录，点击“新增记录”创建一条。</p>
   {{ end }}
 </section>
 {{ end }}

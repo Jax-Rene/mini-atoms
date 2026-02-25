@@ -69,6 +69,11 @@ func (c *StubClient) GenerateSpecJSON(_ context.Context, req ClientRequest) (str
 	return string(b), nil
 }
 
+func (c *StubClient) GenerateProjectName(_ context.Context, goalPrompt string) (string, error) {
+	log.Printf("stub project name generator invoked: prompt_chars=%d", len([]rune(strings.TrimSpace(goalPrompt))))
+	return summarizePromptToAppName(goalPrompt), nil
+}
+
 func summarizePromptToAppName(prompt string) string {
 	prompt = strings.TrimSpace(prompt)
 	if prompt == "" {

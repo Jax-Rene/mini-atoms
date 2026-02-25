@@ -205,6 +205,57 @@ func TestDeepSeekClient_GenerateSpecJSON_NormalizesCommonAliases(t *testing.T) {
 	}
 }
 
+func TestDeepSeekClient_GenerateProjectName_Success(t *testing.T) {
+	t.Parallel()
+
+	var gotBody map[string]any
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		bodyBytes, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if err := json.Unmarshal(bodyBytes, &gotBody); err != nil {
+			t.Fatalf("unmarshal request body: %v", err)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{
+					"message": map[string]any{
+						"content": "```text\n项目名：AI 看板助手\n```",
+					},
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	client := NewDeepSeekClient(DeepSeekClientConfig{
+		APIKey:     "test-key",
+		BaseURL:    srv.URL,
+		HTTPClient: srv.Client(),
+	})
+
+	got, err := client.GenerateProjectName(context.Background(), "帮我做一个简单看板")
+	if err != nil {
+		t.Fatalf("GenerateProjectName() error = %v", err)
+	}
+	if got != "AI 看板助手" {
+		t.Fatalf("GenerateProjectName() = %q, want %q", got, "AI 看板助手")
+	}
+	msgs, ok := gotBody["messages"].([]any)
+	if !ok || len(msgs) < 2 {
+		t.Fatalf("messages malformed: %#v", gotBody["messages"])
+	}
+	userMsg, _ := msgs[1].(map[string]any)
+	content, _ := userMsg["content"].(string)
+	if !strings.Contains(content, "帮我做一个简单看板") {
+		t.Fatalf("user message missing goal prompt: %q", content)
+	}
+}
+
 func TestDeepSeekClient_buildMessages_IncludesStrictOutputFormatRules(t *testing.T) {
 	t.Parallel()
 
@@ -230,6 +281,7 @@ func TestDeepSeekClient_buildMessages_IncludesStrictOutputFormatRules(t *testing
 		"不要把结果包在 spec/result/data",
 		"list/form/toggle/stats",
 		"必须显式包含 collection（不能省略）",
+		"默认不要再额外生成同字段的 toggle block",
 	} {
 		if !strings.Contains(systemPrompt, want) {
 			t.Fatalf("system prompt missing %q:\n%s", want, systemPrompt)
@@ -285,5 +337,32 @@ func TestNormalizeSpecAliasesJSON_NormalizesBlockAliases(t *testing.T) {
 		if strings.Contains(got, bad) {
 			t.Fatalf("normalized JSON still contains alias %q: %s", bad, got)
 		}
+	}
+}
+
+func TestNormalizeSpecAliasesJSON_DefaultsEmptyStatsMetricToCount(t *testing.T) {
+	t.Parallel()
+
+	raw := `{
+		"app_name":"输入统计",
+		"collections":[{"name":"inputs","fields":[{"name":"title","type":"text"}]}],
+		"pages":[
+			{
+				"id":"page_input_stats",
+				"blocks":[
+					{"type":"list","collection":"inputs"},
+					{"type":"stats","collection":"inputs","metric":"   ","label":"总数"}
+				]
+			}
+		]
+	}`
+
+	got := normalizeSpecAliasesJSON(raw)
+
+	if !strings.Contains(got, `"type":"stats"`) {
+		t.Fatalf("normalized JSON missing stats block: %s", got)
+	}
+	if !strings.Contains(got, `"metric":"count"`) {
+		t.Fatalf("expected empty stats.metric to default to count, got %s", got)
 	}
 }
